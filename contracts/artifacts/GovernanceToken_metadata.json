@@ -517,8 +517,24 @@
 				"balanceOf(address)": {
 					"details": "See {IERC20-balanceOf}."
 				},
+				"constructor": {
+					"details": "Constructor sets the token name, symbol, and mints initial supply to the deployer.",
+					"params": {
+						"_initialOwner": "The owner of the token that will recieve all the tokens",
+						"_initialSupply": "The inital supply of the token",
+						"_name": "The name of the token",
+						"_symbol": "The Symbol of the token"
+					}
+				},
 				"decimals()": {
 					"details": "Returns the number of decimals used to get its user representation. For example, if `decimals` equals `2`, a balance of `505` tokens should be displayed to a user as `5.05` (`505 / 10 ** 2`). Tokens usually opt for a value of 18, imitating the relationship between Ether and Wei. This is the default value returned by this function, unless it's overridden. NOTE: This information is only used for _display_ purposes: it in no way affects any of the arithmetic of the contract, including {IERC20-balanceOf} and {IERC20-transfer}."
+				},
+				"mint(address,uint256)": {
+					"details": "Optional: Allows the owner to mint more tokens later if needed.",
+					"params": {
+						"amount": "The amount of tokens to mint.",
+						"to": "The address to mint tokens to."
+					}
 				},
 				"name()": {
 					"details": "Returns the name of the token."
@@ -619,11 +635,11 @@
 			]
 		},
 		"contracts/GovernanceToken.sol": {
-			"keccak256": "0x2f09e10f42f446a4709305a14dc3fc16a5a10b57289d9281555044a20652476f",
+			"keccak256": "0x161302d287dbf2b8d093f17520cea377912b13bda0e0f6937083777dda2889b4",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://4a5d2c989fb191eee665f790703a5778f159d8b9c2eb27a22ac183b70817a731",
-				"dweb:/ipfs/QmSuuVfyDV49tdngWX4drs3hjPH9Gam6rz2oYZUP6LCjVD"
+				"bzz-raw://86aad44b5d4dfd452bf0e8d158ff84eca36f576d8ad8484fda54cb6c93e1190b",
+				"dweb:/ipfs/QmWxrxD7PEJnWaRo9jgt8cmePwWayCZjohaYtm3jMAYE8U"
 			]
 		}
 	},

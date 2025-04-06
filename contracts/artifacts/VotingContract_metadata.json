@@ -9,8 +9,18 @@
 				"inputs": [
 					{
 						"internalType": "address",
-						"name": "_tokenAddress",
+						"name": "_stakingContractAddress",
 						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_initialVotingPeriod",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_initialQuorumBasisPoints",
+						"type": "uint256"
 					},
 					{
 						"internalType": "address",
@@ -67,18 +77,12 @@
 				"inputs": [
 					{
 						"indexed": true,
-						"internalType": "address",
-						"name": "user",
-						"type": "address"
-					},
-					{
-						"indexed": false,
 						"internalType": "uint256",
-						"name": "amount",
+						"name": "proposalId",
 						"type": "uint256"
 					}
 				],
-				"name": "Staked",
+				"name": "ProposalCanceled",
 				"type": "event"
 			},
 			{
@@ -86,24 +90,42 @@
 				"inputs": [
 					{
 						"indexed": true,
+						"internalType": "uint256",
+						"name": "proposalId",
+						"type": "uint256"
+					},
+					{
+						"indexed": true,
 						"internalType": "address",
-						"name": "user",
+						"name": "proposer",
 						"type": "address"
 					},
 					{
 						"indexed": false,
+						"internalType": "string",
+						"name": "description",
+						"type": "string"
+					},
+					{
+						"indexed": false,
 						"internalType": "uint256",
-						"name": "amount",
+						"name": "startTime",
 						"type": "uint256"
 					},
 					{
 						"indexed": false,
 						"internalType": "uint256",
-						"name": "unlockTime",
+						"name": "endTime",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "snapShotTotalStaked",
 						"type": "uint256"
 					}
 				],
-				"name": "UnstakeInitiated",
+				"name": "ProposalCreated",
 				"type": "event"
 			},
 			{
@@ -111,101 +133,68 @@
 				"inputs": [
 					{
 						"indexed": true,
-						"internalType": "address",
-						"name": "user",
-						"type": "address"
+						"internalType": "uint256",
+						"name": "proposalId",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "enum VotingContract.ProposalState",
+						"name": "finalState",
+						"type": "uint8"
 					},
 					{
 						"indexed": false,
 						"internalType": "uint256",
-						"name": "amount",
-						"type": "uint256"
-					}
-				],
-				"name": "Withdraw",
-				"type": "event"
-			},
-			{
-				"inputs": [],
-				"name": "UNSTAKE_PERIOD",
-				"outputs": [
-					{
-						"internalType": "uint256",
-						"name": "",
-						"type": "uint256"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "_account",
-						"type": "address"
-					}
-				],
-				"name": "getUnstakedRequest",
-				"outputs": [
-					{
-						"internalType": "uint256",
-						"name": "amount",
+						"name": "forVotes",
 						"type": "uint256"
 					},
 					{
+						"indexed": false,
 						"internalType": "uint256",
-						"name": "unlockTime",
+						"name": "againstVotes",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "abstrainVotes",
 						"type": "uint256"
 					}
 				],
-				"stateMutability": "view",
-				"type": "function"
+				"name": "ProposalFinished",
+				"type": "event"
 			},
 			{
+				"anonymous": false,
 				"inputs": [
 					{
+						"indexed": true,
+						"internalType": "uint256",
+						"name": "proposalId",
+						"type": "uint256"
+					},
+					{
+						"indexed": true,
 						"internalType": "address",
-						"name": "_account",
+						"name": "voter",
 						"type": "address"
-					}
-				],
-				"name": "getVotingPower",
-				"outputs": [
+					},
 					{
+						"indexed": false,
+						"internalType": "enum VotingContract.VoteType",
+						"name": "voteType",
+						"type": "uint8"
+					},
+					{
+						"indexed": false,
 						"internalType": "uint256",
-						"name": "",
+						"name": "votingPower",
 						"type": "uint256"
 					}
 				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [],
-				"name": "governanceToken",
-				"outputs": [
-					{
-						"internalType": "contract IERC20",
-						"name": "",
-						"type": "address"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "uint256",
-						"name": "_amount",
-						"type": "uint256"
-					}
-				],
-				"name": "initiateUnstaking",
-				"outputs": [],
-				"stateMutability": "nonpayable",
-				"type": "function"
+				"name": "Voted",
+				"type": "event"
 			},
 			{
 				"inputs": [],
@@ -222,33 +211,99 @@
 			},
 			{
 				"inputs": [],
-				"name": "renounceOwnership",
-				"outputs": [],
-				"stateMutability": "nonpayable",
+				"name": "proposalCounter",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
 				"type": "function"
 			},
 			{
 				"inputs": [
 					{
 						"internalType": "uint256",
-						"name": "_amount",
+						"name": "",
 						"type": "uint256"
 					}
 				],
-				"name": "stake",
-				"outputs": [],
-				"stateMutability": "nonpayable",
+				"name": "proposals",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "id",
+						"type": "uint256"
+					},
+					{
+						"internalType": "address",
+						"name": "proposer",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "description",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "creationTime",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "startTime",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endTime",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "forVotes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "againstVotes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "abstrainVotes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "totalVotesParticipated",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "snapshotTotalStaked",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "canceled",
+						"type": "bool"
+					},
+					{
+						"internalType": "enum VotingContract.ProposalState",
+						"name": "state",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
 				"type": "function"
 			},
 			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					}
-				],
-				"name": "stakedBalance",
+				"inputs": [],
+				"name": "quorumBasisPoints",
 				"outputs": [
 					{
 						"internalType": "uint256",
@@ -261,12 +316,19 @@
 			},
 			{
 				"inputs": [],
-				"name": "totalStaked",
+				"name": "renounceOwnership",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "stakingContract",
 				"outputs": [
 					{
-						"internalType": "uint256",
+						"internalType": "contract IStakingContract",
 						"name": "",
-						"type": "uint256"
+						"type": "address"
 					}
 				],
 				"stateMutability": "view",
@@ -286,38 +348,21 @@
 				"type": "function"
 			},
 			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					}
-				],
-				"name": "unstakingRequest",
+				"inputs": [],
+				"name": "votingPeriod",
 				"outputs": [
 					{
 						"internalType": "uint256",
-						"name": "amount",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "unlockTime",
+						"name": "",
 						"type": "uint256"
 					}
 				],
 				"stateMutability": "view",
 				"type": "function"
-			},
-			{
-				"inputs": [],
-				"name": "withdraw",
-				"outputs": [],
-				"stateMutability": "nonpayable",
-				"type": "function"
 			}
 		],
 		"devdoc": {
+			"details": "Manages DAO Proposals and votes",
 			"errors": {
 				"OwnableInvalidOwner(address)": [
 					{
@@ -333,33 +378,11 @@
 			"kind": "dev",
 			"methods": {
 				"constructor": {
-					"details": "Constructor sets the address of the Governance Token",
 					"params": {
-						"_initialOwner": "The address that will own the contract",
-						"_tokenAddress": "The address to deploy GovernanceToken contract"
-					}
-				},
-				"getUnstakedRequest(address)": {
-					"params": {
-						"_account": "The address to query."
-					},
-					"returns": {
-						"amount": "The amount pending withdrawal.",
-						"unlockTime": "The timestamp when withdrawal is possible."
-					}
-				},
-				"getVotingPower(address)": {
-					"params": {
-						"_account": "The address to query."
-					},
-					"returns": {
-						"_0": "The amount of tokens staked by the account."
-					}
-				},
-				"initiateUnstaking(uint256)": {
-					"details": "Tokens remain locked for UNSTAKE_PERIOD. Only one unstake request active at a time per user.",
-					"params": {
-						"_amount": "The amount of tokens to start unstaking."
+						"_initialOwner": "Owner of this contract.",
+						"_initialQuorumBasisPoints": "Quorum requirement",
+						"_initialVotingPeriod": "Default voting duration in seconds.",
+						"_stakingContractAddress": "Address of the deployed StakingContract."
 					}
 				},
 				"owner()": {
@@ -368,46 +391,22 @@
 				"renounceOwnership()": {
 					"details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
 				},
-				"stake(uint256)": {
-					"details": "User must first approve this contract to spend their tokens.",
-					"params": {
-						"_amount": "The amount of tokens to stake."
-					}
-				},
 				"transferOwnership(address)": {
 					"details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
-				},
-				"withdraw()": {
-					"details": "Can only be called after initiateUnstake and waiting UNSTAKE_PERIOD."
 				}
 			},
+			"title": "VotingContract",
 			"version": 1
 		},
 		"userdoc": {
 			"kind": "user",
-			"methods": {
-				"getUnstakedRequest(address)": {
-					"notice": "Gets details of a pending unstake request for an account."
-				},
-				"getVotingPower(address)": {
-					"notice": "Gets the staked balance of an account, which represents voting power."
-				},
-				"initiateUnstaking(uint256)": {
-					"notice": "Initiates the unstaking process for a specified amount."
-				},
-				"stake(uint256)": {
-					"notice": "Stakes a specified amount of GovernanceToken."
-				},
-				"withdraw()": {
-					"notice": "Withdraws tokens after the unstaking period has passed."
-				}
-			},
+			"methods": {},
 			"version": 1
 		}
 	},
 	"settings": {
 		"compilationTarget": {
-			"contracts/StakingContract.sol": "StakingContract"
+			"contracts/VotingContract.sol": "VotingContract"
 		},
 		"evmVersion": "cancun",
 		"libraries": {},
@@ -416,7 +415,7 @@
 		},
 		"optimizer": {
 			"enabled": true,
-			"runs": 1000
+			"runs": 200
 		},
 		"remappings": []
 	},
@@ -427,22 +426,6 @@
 			"urls": [
 				"bzz-raw://8ed324d3920bb545059d66ab97d43e43ee85fd3bd52e03e401f020afb0b120f6",
 				"dweb:/ipfs/QmfEckWLmZkDDcoWrkEvMWhms66xwTLff9DDhegYpvHo1a"
-			]
-		},
-		"@openzeppelin/contracts/security/ReentrancyGuard.sol": {
-			"keccak256": "0xa535a5df777d44e945dd24aa43a11e44b024140fc340ad0dfe42acf4002aade1",
-			"license": "MIT",
-			"urls": [
-				"bzz-raw://41319e7f621f2dc3733511332c4fd032f8e32ad2aa7fd6f665c19741d9941a34",
-				"dweb:/ipfs/QmcYR3bd862GD1Bc7jwrU9bGxrhUu5na1oP964bDCu2id1"
-			]
-		},
-		"@openzeppelin/contracts/token/ERC20/IERC20.sol": {
-			"keccak256": "0xe06a3f08a987af6ad2e1c1e774405d4fe08f1694b67517438b467cecf0da0ef7",
-			"license": "MIT",
-			"urls": [
-				"bzz-raw://df6f0c459663c9858b6cba2cda1d14a7d05a985bed6d2de72bd8e78c25ee79db",
-				"dweb:/ipfs/QmeTTxZ7qVk9rjEv2R4CpCwdf8UMCcRqDNMvzNxHc3Fnn9"
 			]
 		},
 		"@openzeppelin/contracts/utils/Context.sol": {
@@ -461,12 +444,20 @@
 				"dweb:/ipfs/QmVTooKWcLkJ9W68yNX4MgdrbAKiAXwuRN9A7f4NkdcdtQ"
 			]
 		},
-		"contracts/StakingContract.sol": {
-			"keccak256": "0x6050a08aef1f8e82167113a4995d44f7cd84b0d2e060e23f1092b9d4b54d43c3",
+		"contracts/IStakingContract.sol": {
+			"keccak256": "0x7224e826c5b1656e055e2e1b0283a9ece8803710a4696bc893acb0017b8eaf4e",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://307b0832475b6e64d246f75ebde6d127f62d56b23a144cc1956165aeb41244f8",
-				"dweb:/ipfs/QmbGePTBBeuTftGyE1pNE2NTev9J7njhZvWCFYyi8mXevC"
+				"bzz-raw://bf7d6ab675f0b1df7b81d00e7a4423e7988564df9c2a18b94f79596fa516bdd4",
+				"dweb:/ipfs/QmPMe2LieoKiMUHFLqzepJaaXUFuAqoLAiUPpuhJ6gzsNP"
+			]
+		},
+		"contracts/VotingContract.sol": {
+			"keccak256": "0x1089b9fbde8fdd5554202bc34683d6c5f1e92507fefd98c3458824ef8811c4fa",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://dd45b6359f697f803be315df71ac86c00e1dfe0d2a713bd7169439711a7017b7",
+				"dweb:/ipfs/QmRQvn54YYDWbJtnFEF1ZP2yHzFDT4vVmxmcLi6aJcx6ek"
 			]
 		}
 	},

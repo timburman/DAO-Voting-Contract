@@ -1,0 +1,348 @@
+{
+	"id": "92e0537bb4c5d0294566cab5f6510244",
+	"_format": "hh-sol-build-info-1",
+	"solcVersion": "0.8.26",
+	"solcLongVersion": "0.8.26+commit.8a97fa7a",
+	"input": {
+		"language": "Solidity",
+		"sources": {
+			"contracts/IStakingContract.sol": {
+				"content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ninterface IStakingContract {\n    \n    /**\n     * @notice Gets the staked balance of an account (voting power).\n     * @dev In a basic system, this is the current balance.\n     * @param _account The address to query.\n     * @return The amount of tokens staked by the account.\n     */\n    function getVotingPower(address _account) external view returns(uint256);\n\n    /**\n     * @notice Gets the total amount of tokens staked in the contract.\n     * @return The total staked amount.\n     */\n    function totalStaked() external view returns(uint256);\n}"
+			}
+		},
+		"settings": {
+			"optimizer": {
+				"enabled": true,
+				"runs": 200
+			},
+			"outputSelection": {
+				"*": {
+					"": [
+						"ast"
+					],
+					"*": [
+						"abi",
+						"metadata",
+						"devdoc",
+						"userdoc",
+						"storageLayout",
+						"evm.legacyAssembly",
+						"evm.bytecode",
+						"evm.deployedBytecode",
+						"evm.methodIdentifiers",
+						"evm.gasEstimates",
+						"evm.assembly"
+					]
+				}
+			},
+			"remappings": []
+		}
+	},
+	"output": {
+		"contracts": {
+			"contracts/IStakingContract.sol": {
+				"IStakingContract": {
+					"abi": [
+						{
+							"inputs": [
+								{
+									"internalType": "address",
+									"name": "_account",
+									"type": "address"
+								}
+							],
+							"name": "getVotingPower",
+							"outputs": [
+								{
+									"internalType": "uint256",
+									"name": "",
+									"type": "uint256"
+								}
+							],
+							"stateMutability": "view",
+							"type": "function"
+						},
+						{
+							"inputs": [],
+							"name": "totalStaked",
+							"outputs": [
+								{
+									"internalType": "uint256",
+									"name": "",
+									"type": "uint256"
+								}
+							],
+							"stateMutability": "view",
+							"type": "function"
+						}
+					],
+					"devdoc": {
+						"kind": "dev",
+						"methods": {
+							"getVotingPower(address)": {
+								"details": "In a basic system, this is the current balance.",
+								"params": {
+									"_account": "The address to query."
+								},
+								"returns": {
+									"_0": "The amount of tokens staked by the account."
+								}
+							},
+							"totalStaked()": {
+								"returns": {
+									"_0": "The total staked amount."
+								}
+							}
+						},
+						"version": 1
+					},
+					"evm": {
+						"assembly": "",
+						"bytecode": {
+							"functionDebugData": {},
+							"generatedSources": [],
+							"linkReferences": {},
+							"object": "",
+							"opcodes": "",
+							"sourceMap": ""
+						},
+						"deployedBytecode": {
+							"functionDebugData": {},
+							"generatedSources": [],
+							"immutableReferences": {},
+							"linkReferences": {},
+							"object": "",
+							"opcodes": "",
+							"sourceMap": ""
+						},
+						"gasEstimates": null,
+						"legacyAssembly": null,
+						"methodIdentifiers": {
+							"getVotingPower(address)": "bb4d4436",
+							"totalStaked()": "817b1cd2"
+						}
+					},
+					"metadata": "{\"compiler\":{\"version\":\"0.8.26+commit.8a97fa7a\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_account\",\"type\":\"address\"}],\"name\":\"getVotingPower\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"totalStaked\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{\"getVotingPower(address)\":{\"details\":\"In a basic system, this is the current balance.\",\"params\":{\"_account\":\"The address to query.\"},\"returns\":{\"_0\":\"The amount of tokens staked by the account.\"}},\"totalStaked()\":{\"returns\":{\"_0\":\"The total staked amount.\"}}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"getVotingPower(address)\":{\"notice\":\"Gets the staked balance of an account (voting power).\"},\"totalStaked()\":{\"notice\":\"Gets the total amount of tokens staked in the contract.\"}},\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/IStakingContract.sol\":\"IStakingContract\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"contracts/IStakingContract.sol\":{\"keccak256\":\"0x7224e826c5b1656e055e2e1b0283a9ece8803710a4696bc893acb0017b8eaf4e\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://bf7d6ab675f0b1df7b81d00e7a4423e7988564df9c2a18b94f79596fa516bdd4\",\"dweb:/ipfs/QmPMe2LieoKiMUHFLqzepJaaXUFuAqoLAiUPpuhJ6gzsNP\"]}},\"version\":1}",
+					"storageLayout": {
+						"storage": [],
+						"types": null
+					},
+					"userdoc": {
+						"kind": "user",
+						"methods": {
+							"getVotingPower(address)": {
+								"notice": "Gets the staked balance of an account (voting power)."
+							},
+							"totalStaked()": {
+								"notice": "Gets the total amount of tokens staked in the contract."
+							}
+						},
+						"version": 1
+					}
+				}
+			}
+		},
+		"sources": {
+			"contracts/IStakingContract.sol": {
+				"ast": {
+					"absolutePath": "contracts/IStakingContract.sol",
+					"exportedSymbols": {
+						"IStakingContract": [
+							16
+						]
+					},
+					"id": 17,
+					"license": "MIT",
+					"nodeType": "SourceUnit",
+					"nodes": [
+						{
+							"id": 1,
+							"literals": [
+								"solidity",
+								"^",
+								"0.8",
+								".20"
+							],
+							"nodeType": "PragmaDirective",
+							"src": "32:24:0"
+						},
+						{
+							"abstract": false,
+							"baseContracts": [],
+							"canonicalName": "IStakingContract",
+							"contractDependencies": [],
+							"contractKind": "interface",
+							"fullyImplemented": false,
+							"id": 16,
+							"linearizedBaseContracts": [
+								16
+							],
+							"name": "IStakingContract",
+							"nameLocation": "68:16:0",
+							"nodeType": "ContractDefinition",
+							"nodes": [
+								{
+									"documentation": {
+										"id": 2,
+										"nodeType": "StructuredDocumentation",
+										"src": "96:244:0",
+										"text": " @notice Gets the staked balance of an account (voting power).\n @dev In a basic system, this is the current balance.\n @param _account The address to query.\n @return The amount of tokens staked by the account."
+									},
+									"functionSelector": "bb4d4436",
+									"id": 9,
+									"implemented": false,
+									"kind": "function",
+									"modifiers": [],
+									"name": "getVotingPower",
+									"nameLocation": "354:14:0",
+									"nodeType": "FunctionDefinition",
+									"parameters": {
+										"id": 5,
+										"nodeType": "ParameterList",
+										"parameters": [
+											{
+												"constant": false,
+												"id": 4,
+												"mutability": "mutable",
+												"name": "_account",
+												"nameLocation": "377:8:0",
+												"nodeType": "VariableDeclaration",
+												"scope": 9,
+												"src": "369:16:0",
+												"stateVariable": false,
+												"storageLocation": "default",
+												"typeDescriptions": {
+													"typeIdentifier": "t_address",
+													"typeString": "address"
+												},
+												"typeName": {
+													"id": 3,
+													"name": "address",
+													"nodeType": "ElementaryTypeName",
+													"src": "369:7:0",
+													"stateMutability": "nonpayable",
+													"typeDescriptions": {
+														"typeIdentifier": "t_address",
+														"typeString": "address"
+													}
+												},
+												"visibility": "internal"
+											}
+										],
+										"src": "368:18:0"
+									},
+									"returnParameters": {
+										"id": 8,
+										"nodeType": "ParameterList",
+										"parameters": [
+											{
+												"constant": false,
+												"id": 7,
+												"mutability": "mutable",
+												"name": "",
+												"nameLocation": "-1:-1:-1",
+												"nodeType": "VariableDeclaration",
+												"scope": 9,
+												"src": "409:7:0",
+												"stateVariable": false,
+												"storageLocation": "default",
+												"typeDescriptions": {
+													"typeIdentifier": "t_uint256",
+													"typeString": "uint256"
+												},
+												"typeName": {
+													"id": 6,
+													"name": "uint256",
+													"nodeType": "ElementaryTypeName",
+													"src": "409:7:0",
+													"typeDescriptions": {
+														"typeIdentifier": "t_uint256",
+														"typeString": "uint256"
+													}
+												},
+												"visibility": "internal"
+											}
+										],
+										"src": "408:9:0"
+									},
+									"scope": 16,
+									"src": "345:73:0",
+									"stateMutability": "view",
+									"virtual": false,
+									"visibility": "external"
+								},
+								{
+									"documentation": {
+										"id": 10,
+										"nodeType": "StructuredDocumentation",
+										"src": "424:122:0",
+										"text": " @notice Gets the total amount of tokens staked in the contract.\n @return The total staked amount."
+									},
+									"functionSelector": "817b1cd2",
+									"id": 15,
+									"implemented": false,
+									"kind": "function",
+									"modifiers": [],
+									"name": "totalStaked",
+									"nameLocation": "560:11:0",
+									"nodeType": "FunctionDefinition",
+									"parameters": {
+										"id": 11,
+										"nodeType": "ParameterList",
+										"parameters": [],
+										"src": "571:2:0"
+									},
+									"returnParameters": {
+										"id": 14,
+										"nodeType": "ParameterList",
+										"parameters": [
+											{
+												"constant": false,
+												"id": 13,
+												"mutability": "mutable",
+												"name": "",
+												"nameLocation": "-1:-1:-1",
+												"nodeType": "VariableDeclaration",
+												"scope": 15,
+												"src": "596:7:0",
+												"stateVariable": false,
+												"storageLocation": "default",
+												"typeDescriptions": {
+													"typeIdentifier": "t_uint256",
+													"typeString": "uint256"
+												},
+												"typeName": {
+													"id": 12,
+													"name": "uint256",
+													"nodeType": "ElementaryTypeName",
+													"src": "596:7:0",
+													"typeDescriptions": {
+														"typeIdentifier": "t_uint256",
+														"typeString": "uint256"
+													}
+												},
+												"visibility": "internal"
+											}
+										],
+										"src": "595:9:0"
+									},
+									"scope": 16,
+									"src": "551:54:0",
+									"stateMutability": "view",
+									"virtual": false,
+									"visibility": "external"
+								}
+							],
+							"scope": 17,
+							"src": "58:549:0",
+							"usedErrors": [],
+							"usedEvents": []
+						}
+					],
+					"src": "32:575:0"
+				},
+				"id": 0
+			}
+		}
+	}
+}

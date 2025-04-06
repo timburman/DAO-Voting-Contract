@@ -119,7 +119,7 @@ contract StakingContract is Ownable, ReentrancyGuard {
      * @param _account The address to query.
      * @return The amount of tokens staked by the account.
      */
-    function getVotingPower(address _account) public view returns(uint256) {
+    function getVotingPower(address _account) external view returns(uint256) {
         return stakedBalance[_account];
     }
 

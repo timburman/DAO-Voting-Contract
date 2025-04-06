@@ -1,0 +1,100 @@
+{
+	"compiler": {
+		"version": "0.8.26+commit.8a97fa7a"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_account",
+						"type": "address"
+					}
+				],
+				"name": "getVotingPower",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "totalStaked",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {
+				"getVotingPower(address)": {
+					"details": "In a basic system, this is the current balance.",
+					"params": {
+						"_account": "The address to query."
+					},
+					"returns": {
+						"_0": "The amount of tokens staked by the account."
+					}
+				},
+				"totalStaked()": {
+					"returns": {
+						"_0": "The total staked amount."
+					}
+				}
+			},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {
+				"getVotingPower(address)": {
+					"notice": "Gets the staked balance of an account (voting power)."
+				},
+				"totalStaked()": {
+					"notice": "Gets the total amount of tokens staked in the contract."
+				}
+			},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/IStakingContract.sol": "IStakingContract"
+		},
+		"evmVersion": "cancun",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": true,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/IStakingContract.sol": {
+			"keccak256": "0x7224e826c5b1656e055e2e1b0283a9ece8803710a4696bc893acb0017b8eaf4e",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://bf7d6ab675f0b1df7b81d00e7a4423e7988564df9c2a18b94f79596fa516bdd4",
+				"dweb:/ipfs/QmPMe2LieoKiMUHFLqzepJaaXUFuAqoLAiUPpuhJ6gzsNP"
+			]
+		}
+	},
+	"version": 1
+}

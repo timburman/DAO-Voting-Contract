@@ -14,11 +14,6 @@
 					},
 					{
 						"internalType": "uint256",
-						"name": "_initialVotingPeriod",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
 						"name": "_initialQuorumBasisPoints",
 						"type": "uint256"
 					},
@@ -158,7 +153,7 @@
 					{
 						"indexed": false,
 						"internalType": "uint256",
-						"name": "abstrainVotes",
+						"name": "abstainVotes",
 						"type": "uint256"
 					}
 				],
@@ -195,6 +190,172 @@
 				],
 				"name": "Voted",
 				"type": "event"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_proposalId",
+						"type": "uint256"
+					}
+				],
+				"name": "cancelProposal",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_proposalId",
+						"type": "uint256"
+					},
+					{
+						"internalType": "enum VotingContract.VoteType",
+						"name": "_voteType",
+						"type": "uint8"
+					}
+				],
+				"name": "casteVote",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "_description",
+						"type": "string"
+					}
+				],
+				"name": "createProposal",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_proposalId",
+						"type": "uint256"
+					}
+				],
+				"name": "finishProposal",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_proposalId",
+						"type": "uint256"
+					}
+				],
+				"name": "getProposal",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "id",
+						"type": "uint256"
+					},
+					{
+						"internalType": "address",
+						"name": "proposer",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "description",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "startTime",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endTime",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "forVotes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "againstVotes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "abstainVotes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "totalVotesParticipated",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "snapshotTotalStaked",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "canceled",
+						"type": "bool"
+					},
+					{
+						"internalType": "enum VotingContract.ProposalState",
+						"name": "state",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_proposalId",
+						"type": "uint256"
+					},
+					{
+						"internalType": "address",
+						"name": "_voter",
+						"type": "address"
+					}
+				],
+				"name": "getVote",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "hasVoted",
+						"type": "bool"
+					},
+					{
+						"internalType": "enum VotingContract.VoteType",
+						"name": "voteChoice",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
 			},
 			{
 				"inputs": [],
@@ -274,7 +435,7 @@
 					},
 					{
 						"internalType": "uint256",
-						"name": "abstrainVotes",
+						"name": "abstainVotes",
 						"type": "uint256"
 					},
 					{
@@ -317,6 +478,32 @@
 			{
 				"inputs": [],
 				"name": "renounceOwnership",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_newQuorumBasisPoints",
+						"type": "uint256"
+					}
+				],
+				"name": "setQuorum",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_newVotingPeriod",
+						"type": "uint256"
+					}
+				],
+				"name": "setVotingPeriod",
 				"outputs": [],
 				"stateMutability": "nonpayable",
 				"type": "function"
@@ -377,12 +564,21 @@
 			},
 			"kind": "dev",
 			"methods": {
+				"cancelProposal(uint256)": {
+					"params": {
+						"_proposalId": "The ID of the proposal to cancel."
+					}
+				},
 				"constructor": {
 					"params": {
 						"_initialOwner": "Owner of this contract.",
 						"_initialQuorumBasisPoints": "Quorum requirement",
-						"_initialVotingPeriod": "Default voting duration in seconds.",
 						"_stakingContractAddress": "Address of the deployed StakingContract."
+					}
+				},
+				"createProposal(string)": {
+					"params": {
+						"_description": "Text describing the proposal."
 					}
 				},
 				"owner()": {
@@ -400,7 +596,14 @@
 		},
 		"userdoc": {
 			"kind": "user",
-			"methods": {},
+			"methods": {
+				"cancelProposal(uint256)": {
+					"notice": "Allows the proposer to cancel an active proposal."
+				},
+				"createProposal(string)": {
+					"notice": "Creates a new proposal."
+				}
+			},
 			"version": 1
 		}
 	},
@@ -453,11 +656,11 @@
 			]
 		},
 		"contracts/VotingContract.sol": {
-			"keccak256": "0x1089b9fbde8fdd5554202bc34683d6c5f1e92507fefd98c3458824ef8811c4fa",
+			"keccak256": "0xc43990572bae42aeca612bbd4a96dd5bfc5e30534ac3afbb6b9919a386e991e6",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://dd45b6359f697f803be315df71ac86c00e1dfe0d2a713bd7169439711a7017b7",
-				"dweb:/ipfs/QmRQvn54YYDWbJtnFEF1ZP2yHzFDT4vVmxmcLi6aJcx6ek"
+				"bzz-raw://6df724b3410b701117a6e7263374be7977dd2de9aeecdc4fb51c174de4947f91",
+				"dweb:/ipfs/QmaU4czxzposnKFKik4WJuDmsuTzEtd5QAf7o5TsG8GC66"
 			]
 		}
 	},

@@ -130,7 +130,11 @@ contract VotingContract is Ownable {
 
     // Voting
 
-
+    /**
+     * @notice Allows the users to caste the vote on an active proposal
+     * @param _proposalId the proposal Id
+     * @param _voteType vote for, against or abstrain
+    */
     function casteVote(uint256 _proposalId, VoteType _voteType) external {
         ProposalView storage proposal = proposals[_proposalId];
         require(proposal.id != 0, "Proposal does not exist");
@@ -161,6 +165,10 @@ contract VotingContract is Ownable {
 
     // Finishing of Proposal
 
+    /**
+     * @notice Allows everyone to finish the proposal after its voting period is over
+     * @param _proposalId the proposal id
+    */
     function finishProposal(uint256 _proposalId) external {
         ProposalView storage proposal = proposals[_proposalId];
         require(proposal.id != 0, "Proposal does not exist");
@@ -196,6 +204,11 @@ contract VotingContract is Ownable {
 
     // View functions
 
+
+    /**
+     * @notice Fetches the proposal using proposalId
+     * @param _proposalId proposal id to fetch
+    */
     function getProposal(uint256 _proposalId) external view
     returns(
         uint256 id,
@@ -230,6 +243,10 @@ contract VotingContract is Ownable {
         );
     }
 
+
+    /**
+     * @notice 
+    */
     function getVote(uint256 _proposalId, address _voter) external view returns (bool hasVoted, VoteType voteChoice) {
         ProposalView storage proposal = proposals[_proposalId];
          require(proposal.id != 0, "Proposal does not exist");

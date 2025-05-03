@@ -569,6 +569,12 @@
 						"_proposalId": "The ID of the proposal to cancel."
 					}
 				},
+				"casteVote(uint256,uint8)": {
+					"params": {
+						"_proposalId": "the proposal Id",
+						"_voteType": "vote for, against or abstrain"
+					}
+				},
 				"constructor": {
 					"params": {
 						"_initialOwner": "Owner of this contract.",
@@ -579,6 +585,16 @@
 				"createProposal(string)": {
 					"params": {
 						"_description": "Text describing the proposal."
+					}
+				},
+				"finishProposal(uint256)": {
+					"params": {
+						"_proposalId": "the proposal id"
+					}
+				},
+				"getProposal(uint256)": {
+					"params": {
+						"_proposalId": "proposal id to fetch"
 					}
 				},
 				"owner()": {
@@ -600,8 +616,17 @@
 				"cancelProposal(uint256)": {
 					"notice": "Allows the proposer to cancel an active proposal."
 				},
+				"casteVote(uint256,uint8)": {
+					"notice": "Allows the users to caste the vote on an active proposal"
+				},
 				"createProposal(string)": {
 					"notice": "Creates a new proposal."
+				},
+				"finishProposal(uint256)": {
+					"notice": "Allows everyone to finish the proposal after its voting period is over"
+				},
+				"getProposal(uint256)": {
+					"notice": "Fetches the proposal using proposalId"
 				}
 			},
 			"version": 1
@@ -656,11 +681,11 @@
 			]
 		},
 		"contracts/VotingContract.sol": {
-			"keccak256": "0xc43990572bae42aeca612bbd4a96dd5bfc5e30534ac3afbb6b9919a386e991e6",
+			"keccak256": "0xcadea2fde2289aebc5fcabe1f6f8bac8d94fc4b00688528f5e58636930afb357",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://6df724b3410b701117a6e7263374be7977dd2de9aeecdc4fb51c174de4947f91",
-				"dweb:/ipfs/QmaU4czxzposnKFKik4WJuDmsuTzEtd5QAf7o5TsG8GC66"
+				"bzz-raw://b833d3783da06315dfe305f5794ead9fa61557f946098fdb6601ede93998b1e6",
+				"dweb:/ipfs/QmcNjhKQnbKKMh5VE6oR2Z2b9EsskA14nkpMfE9T9n7WLe"
 			]
 		}
 	},

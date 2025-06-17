@@ -699,7 +699,7 @@
 	},
 	"settings": {
 		"compilationTarget": {
-			"contracts/BasicVestingGovernanceToken.sol": "AdvancedGovernanceToken"
+			"contracts/BasicVestingGovernanceToken.sol": "BasicVestingGovernanceToken"
 		},
 		"evmVersion": "cancun",
 		"libraries": {},
@@ -778,11 +778,11 @@
 			]
 		},
 		"contracts/BasicVestingGovernanceToken.sol": {
-			"keccak256": "0x3c955b31e05c872f63775b1777bec8c809f513bd92ebbedfe1791522cc86180c",
+			"keccak256": "0x3d23b43aed7fe20cfffa034828dcfab3908b40c9c5f253e99c6445b71a2d8bfe",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://ab86ecf39346861c96fc67177a98a3629f9a8dbebcb30066e484fffc1b3468de",
-				"dweb:/ipfs/QmP4ecSfZeEaFejhRhPXJGvkhCSPfL2epQMos1LUT3AGcq"
+				"bzz-raw://9ad9833410fb0b709af8f244f3b4631f754b948b6d800ca1b67e333de008dc1f",
+				"dweb:/ipfs/QmXDnXm43BPuuBiN3zaydtGHTGpFkMidE3uHjZGmQUvTkC"
 			]
 		}
 	},

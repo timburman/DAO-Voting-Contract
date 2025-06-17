@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 
-contract AdvancedGovernanceToken is ERC20, ERC20Burnable, Ownable {
+contract BasicVestingGovernanceToken is ERC20, ERC20Burnable, Ownable {
 
     using SafeMath for uint256;
 
@@ -48,6 +48,49 @@ contract AdvancedGovernanceToken is ERC20, ERC20Burnable, Ownable {
         }
 
         emit VestingScheduleCreated(_totalVestedSupply, vestingStartTime, vestingDuration);
+
+    }
+
+
+    function currentlyVested() public view returns (uint256) {
+
+        if (block.timestamp < vestingStartTime || vestingDuration == 0) {
+            return 0;
+        }
+
+        uint timeElapsed = block.timestamp.sub(vestingStartTime);
+
+        if (timeElapsed >= vestingDuration) {
+            return totalVestedSupply;
+        }
+
+        return totalVestedSupply.mul(timeElapsed).div(vestingDuration);
+
+    }
+
+    function releaseVestedTokens() public onlyOwner {
+        uint256 totalVestedAmount = currentlyVested();
+
+        require(totalVestedAmount > totalVestedReleased, "Vesting: no new tokens have vested");
+
+        uint256 amountToRelease = totalVestedAmount.sub(totalVestedReleased);
+
+        totalVestedReleased = totalVestedReleased.add(amountToRelease);
+
+        _transfer(address(this), owner(), amountToRelease);
+        
+
+        emit VestedTokensReleased(owner(), amountToRelease);
+    }
+
+
+    function _update(address from, address to, uint256 amount) internal virtual override{
+
+        super._update(from, to, amount);
+
+        if (from == address(this)) {
+            require(to == owner() && msg.sender == owner(), "ERC20: cannot transfer locked vested tokens");
+        }
 
     }
 

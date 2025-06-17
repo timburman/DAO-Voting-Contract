@@ -19,7 +19,17 @@
 					},
 					{
 						"internalType": "uint256",
-						"name": "_initialSupply",
+						"name": "_initialOwnerSupply",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_totalVestedSupply",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_vestingDurationInSeconds",
 						"type": "uint256"
 					},
 					{
@@ -209,6 +219,50 @@
 				"type": "event"
 			},
 			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "to",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "amount",
+						"type": "uint256"
+					}
+				],
+				"name": "VestedTokensReleased",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "totalAmount",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "startTime",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "duration",
+						"type": "uint256"
+					}
+				],
+				"name": "VestingScheduleCreated",
+				"type": "event"
+			},
+			{
 				"inputs": [
 					{
 						"internalType": "address",
@@ -276,6 +330,37 @@
 				"type": "function"
 			},
 			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "value",
+						"type": "uint256"
+					}
+				],
+				"name": "burn",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "account",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "value",
+						"type": "uint256"
+					}
+				],
+				"name": "burnFrom",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
 				"inputs": [],
 				"name": "decimals",
 				"outputs": [
@@ -286,24 +371,6 @@
 					}
 				],
 				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "to",
-						"type": "address"
-					},
-					{
-						"internalType": "uint256",
-						"name": "amount",
-						"type": "uint256"
-					}
-				],
-				"name": "mint",
-				"outputs": [],
-				"stateMutability": "nonpayable",
 				"type": "function"
 			},
 			{
@@ -355,6 +422,32 @@
 			{
 				"inputs": [],
 				"name": "totalSupply",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "totalVestedReleased",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "totalVestedSupply",
 				"outputs": [
 					{
 						"internalType": "uint256",
@@ -430,10 +523,35 @@
 				"outputs": [],
 				"stateMutability": "nonpayable",
 				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "vestingDuration",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "vestingStartTime",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
 			}
 		],
 		"devdoc": {
-			"details": "A simple ERC20 token for DAO governance. Implements IERC20 via the ERC20 standard contract. Owner can mint the initial supply.",
 			"errors": {
 				"ERC20InsufficientAllowance(address,uint256,uint256)": [
 					{
@@ -517,24 +635,14 @@
 				"balanceOf(address)": {
 					"details": "See {IERC20-balanceOf}."
 				},
-				"constructor": {
-					"details": "Constructor sets the token name, symbol, and mints initial supply to the deployer.",
-					"params": {
-						"_initialOwner": "The owner of the token that will recieve all the tokens",
-						"_initialSupply": "The inital supply of the token",
-						"_name": "The name of the token",
-						"_symbol": "The Symbol of the token"
-					}
+				"burn(uint256)": {
+					"details": "Destroys a `value` amount of tokens from the caller. See {ERC20-_burn}."
+				},
+				"burnFrom(address,uint256)": {
+					"details": "Destroys a `value` amount of tokens from `account`, deducting from the caller's allowance. See {ERC20-_burn} and {ERC20-allowance}. Requirements: - the caller must have allowance for ``accounts``'s tokens of at least `value`."
 				},
 				"decimals()": {
 					"details": "Returns the number of decimals used to get its user representation. For example, if `decimals` equals `2`, a balance of `505` tokens should be displayed to a user as `5.05` (`505 / 10 ** 2`). Tokens usually opt for a value of 18, imitating the relationship between Ether and Wei. This is the default value returned by this function, unless it's overridden. NOTE: This information is only used for _display_ purposes: it in no way affects any of the arithmetic of the contract, including {IERC20-balanceOf} and {IERC20-transfer}."
-				},
-				"mint(address,uint256)": {
-					"details": "Optional: Allows the owner to mint more tokens later if needed.",
-					"params": {
-						"amount": "The amount of tokens to mint.",
-						"to": "The address to mint tokens to."
-					}
 				},
 				"name()": {
 					"details": "Returns the name of the token."
@@ -561,7 +669,6 @@
 					"details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
 				}
 			},
-			"title": "GovernanceToken",
 			"version": 1
 		},
 		"userdoc": {
@@ -572,7 +679,7 @@
 	},
 	"settings": {
 		"compilationTarget": {
-			"contracts/GovernanceToken.sol": "GovernanceToken"
+			"contracts/AdvancedGovernanceToken.sol": "AdvancedGovernanceToken"
 		},
 		"evmVersion": "cancun",
 		"libraries": {},
@@ -618,6 +725,14 @@
 				"dweb:/ipfs/QmeTTxZ7qVk9rjEv2R4CpCwdf8UMCcRqDNMvzNxHc3Fnn9"
 			]
 		},
+		"@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol": {
+			"keccak256": "0x2659248df25e34000ed214b3dc8da2160bc39874c992b477d9e2b1b3283dc073",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://c345af1b0e7ea28d1216d6a04ab28f5534a5229b9edf9ca3cd0e84950ae58d26",
+				"dweb:/ipfs/QmY63jtSrYpLRe8Gj1ep2vMDCKxGNNG3hnNVKBVnrs2nmA"
+			]
+		},
 		"@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol": {
 			"keccak256": "0x70f2f713b13b7ce4610bcd0ac9fec0f3cc43693b043abcb8dc40a42a726eb330",
 			"license": "MIT",
@@ -634,12 +749,20 @@
 				"dweb:/ipfs/Qmax9WHBnVsZP46ZxEMNRQpLQnrdE4dK8LehML1Py8FowF"
 			]
 		},
-		"contracts/GovernanceToken.sol": {
-			"keccak256": "0x161302d287dbf2b8d093f17520cea377912b13bda0e0f6937083777dda2889b4",
+		"@openzeppelin/contracts/utils/math/SafeMath.sol": {
+			"keccak256": "0x58b21219689909c4f8339af00813760337f7e2e7f169a97fe49e2896dcfb3b9a",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://86aad44b5d4dfd452bf0e8d158ff84eca36f576d8ad8484fda54cb6c93e1190b",
-				"dweb:/ipfs/QmWxrxD7PEJnWaRo9jgt8cmePwWayCZjohaYtm3jMAYE8U"
+				"bzz-raw://ef8e012e946dec20e59f2d4446f4b44bb098f3fa8bac103b1b5112fff777447b",
+				"dweb:/ipfs/QmVTooKWcLkJ9W68yNX4MgdrbAKiAXwuRN9A7f4NkdcdtQ"
+			]
+		},
+		"contracts/AdvancedGovernanceToken.sol": {
+			"keccak256": "0xd4cfcf149a82cf4199eb6fa84cb501a9369599c6a3c7366f20f02c44520f3634",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://eece02e9eb302087e51327602987a0ddc33760526b74832f8788ccee5bcabd3b",
+				"dweb:/ipfs/Qmd2sSyxYeVeGnoJmpHe7wJi337MzxkrVMZMErudvLRhsc"
 			]
 		}
 	},

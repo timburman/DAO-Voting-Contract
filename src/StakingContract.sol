@@ -9,7 +9,7 @@ contract StakingContract is Ownable, ReentrancyGuard {
     IERC20 public immutable governanceToken;
 
     mapping(address => uint256) public stakedBalance;
-    uint public totalStaked;
+    uint256 public totalStaked;
 
     //Manage Unstaking Request
     struct UnstakeInfo {
@@ -17,17 +17,14 @@ contract StakingContract is Ownable, ReentrancyGuard {
         uint256 unlockTime;
     }
     // Tracks Unstaking Requests
+
     mapping(address => UnstakeInfo) public unstakingRequest;
 
     uint256 public constant UNSTAKE_PERIOD = 7 days;
 
     // Events
     event Staked(address indexed user, uint256 amount);
-    event UnstakeInitiated(
-        address indexed user,
-        uint256 amount,
-        uint256 unlockTime
-    );
+    event UnstakeInitiated(address indexed user, uint256 amount, uint256 unlockTime);
     event Withdraw(address indexed user, uint256 amount);
 
     /**
@@ -35,14 +32,8 @@ contract StakingContract is Ownable, ReentrancyGuard {
      * @param _tokenAddress The address to deploy GovernanceToken contract
      * @param _initialOwner The address that will own the contract
      */
-    constructor(
-        address _tokenAddress,
-        address _initialOwner
-    ) Ownable(_initialOwner) {
-        require(
-            _tokenAddress != address(0),
-            "The Token address cannot be zero"
-        );
+    constructor(address _tokenAddress, address _initialOwner) Ownable(_initialOwner) {
+        require(_tokenAddress != address(0), "The Token address cannot be zero");
         governanceToken = IERC20(_tokenAddress);
     }
 
@@ -55,17 +46,10 @@ contract StakingContract is Ownable, ReentrancyGuard {
      */
     function stake(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Cannot stake zero Tokens");
-        require(
-            governanceToken.balanceOf(msg.sender) >= _amount,
-            "Insufficient Balance"
-        );
+        require(governanceToken.balanceOf(msg.sender) >= _amount, "Insufficient Balance");
 
         // Transfer Tokens from user to the contract
-        bool success = governanceToken.transferFrom(
-            msg.sender,
-            address(this),
-            _amount
-        );
+        bool success = governanceToken.transferFrom(msg.sender, address(this), _amount);
         require(success, "Transfer Failed");
 
         // Updating Staking Records
@@ -84,14 +68,8 @@ contract StakingContract is Ownable, ReentrancyGuard {
      */
     function initiateUnstaking(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Cannot Unstake zero tokens");
-        require(
-            stakedBalance[msg.sender] >= _amount,
-            "Insufficient staked balance"
-        );
-        require(
-            unstakingRequest[msg.sender].amount == 0,
-            "Unstake Already in Process"
-        );
+        require(stakedBalance[msg.sender] >= _amount, "Insufficient staked balance");
+        require(unstakingRequest[msg.sender].amount == 0, "Unstake Already in Process");
 
         // Updating Staking Records
         stakedBalance[msg.sender] = stakedBalance[msg.sender] - _amount;
@@ -99,10 +77,7 @@ contract StakingContract is Ownable, ReentrancyGuard {
 
         // Recoring Unstaking
         uint256 unlockTime = block.timestamp + UNSTAKE_PERIOD;
-        unstakingRequest[msg.sender] = UnstakeInfo({
-            amount: _amount,
-            unlockTime: unlockTime
-        });
+        unstakingRequest[msg.sender] = UnstakeInfo({amount: _amount, unlockTime: unlockTime});
 
         emit UnstakeInitiated(msg.sender, _amount, unlockTime);
     }
@@ -114,10 +89,7 @@ contract StakingContract is Ownable, ReentrancyGuard {
     function withdraw() external nonReentrant {
         UnstakeInfo storage request = unstakingRequest[msg.sender];
         require(request.amount > 0, "No Unstake Request Found");
-        require(
-            block.timestamp >= request.unlockTime,
-            "Unstake period not over"
-        );
+        require(block.timestamp >= request.unlockTime, "Unstake period not over");
 
         uint256 amountToWithdraw = request.amount;
 
@@ -149,9 +121,7 @@ contract StakingContract is Ownable, ReentrancyGuard {
      * @return amount The amount pending withdrawal.
      * @return unlockTime The timestamp when withdrawal is possible.
      */
-    function getUnstakedRequest(
-        address _account
-    ) external view returns (uint256 amount, uint256 unlockTime) {
+    function getUnstakedRequest(address _account) external view returns (uint256 amount, uint256 unlockTime) {
         UnstakeInfo storage request = unstakingRequest[_account];
         return (request.amount, request.unlockTime);
     }

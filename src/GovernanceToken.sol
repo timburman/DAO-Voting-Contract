@@ -18,12 +18,10 @@ contract GovernanceToken is ERC20, Ownable {
      * @param _initialSupply The inital supply of the token
      * @param _initialOwner The owner of the token that will recieve all the tokens
      */
-    constructor(
-        string memory _name,
-        string memory _symbol,
-        uint256 _initialSupply,
-        address _initialOwner
-    ) ERC20(_name, _symbol) Ownable(_initialOwner) {
+    constructor(string memory _name, string memory _symbol, uint256 _initialSupply, address _initialOwner)
+        ERC20(_name, _symbol)
+        Ownable(_initialOwner)
+    {
         require(_initialOwner != address(0));
         _mint(_initialOwner, _initialSupply);
     }

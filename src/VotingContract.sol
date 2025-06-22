@@ -57,12 +57,7 @@ contract VotingContract is Ownable {
         uint256 endTime,
         uint256 snapShotTotalStaked
     );
-    event Voted(
-        uint256 indexed proposalId,
-        address indexed voter,
-        VoteType voteType,
-        uint256 votingPower
-    );
+    event Voted(uint256 indexed proposalId, address indexed voter, VoteType voteType, uint256 votingPower);
     event ProposalFinished(
         uint256 indexed proposalId,
         ProposalState finalState,
@@ -77,19 +72,11 @@ contract VotingContract is Ownable {
      * @param _initialQuorumBasisPoints Quorum requirement
      * @param _initialOwner Owner of this contract.
      */
-    constructor(
-        address _stakingContractAddress,
-        uint256 _initialQuorumBasisPoints,
-        address _initialOwner
-    ) Ownable(_initialOwner) {
-        require(
-            _stakingContractAddress != address(0),
-            "Staking contract address cannot be zero"
-        );
-        require(
-            _initialQuorumBasisPoints <= 10000,
-            "Quorum cannot exceed 100%"
-        );
+    constructor(address _stakingContractAddress, uint256 _initialQuorumBasisPoints, address _initialOwner)
+        Ownable(_initialOwner)
+    {
+        require(_stakingContractAddress != address(0), "Staking contract address cannot be zero");
+        require(_initialQuorumBasisPoints <= 10000, "Quorum cannot exceed 100%");
 
         stakingContract = IStakingContract(_stakingContractAddress);
         quorumBasisPoints = _initialQuorumBasisPoints;
@@ -101,14 +88,12 @@ contract VotingContract is Ownable {
      * @notice Creates a new proposal.
      * @param _description Text describing the proposal.
      */
-    function createProposal(
-        string calldata _description
-    ) external onlyOwner returns (uint256) {
+    function createProposal(string calldata _description) external onlyOwner returns (uint256) {
         proposalCounter = proposalCounter + 1;
         uint256 proposalId = proposalCounter;
 
         uint256 currentTime = block.timestamp;
-        uint currentTotalStaked = stakingContract.totalStaked();
+        uint256 currentTotalStaked = stakingContract.totalStaked();
 
         ProposalView storage newProposal = proposals[proposalId];
         newProposal.id = proposalId;
@@ -121,12 +106,7 @@ contract VotingContract is Ownable {
         newProposal.state = ProposalState.Active;
 
         emit ProposalCreated(
-            proposalId,
-            msg.sender,
-            _description,
-            newProposal.startTime,
-            newProposal.endTime,
-            currentTotalStaked
+            proposalId, msg.sender, _description, newProposal.startTime, newProposal.endTime, currentTotalStaked
         );
 
         return proposalId;
@@ -157,31 +137,17 @@ contract VotingContract is Ownable {
     function casteVote(uint256 _proposalId, VoteType _voteType) external {
         ProposalView storage proposal = proposals[_proposalId];
         require(proposal.id != 0, "Proposal does not exist");
-        require(
-            proposal.state == ProposalState.Active,
-            "Proposal is not active"
-        );
-        require(
-            block.timestamp >= proposal.startTime,
-            "Voting has not started"
-        );
+        require(proposal.state == ProposalState.Active, "Proposal is not active");
+        require(block.timestamp >= proposal.startTime, "Voting has not started");
         require(block.timestamp < proposal.endTime, "Voting period has ended");
-        require(
-            !proposal.hasVoted[msg.sender],
-            "Already voted on this proposal"
-        );
+        require(!proposal.hasVoted[msg.sender], "Already voted on this proposal");
 
         uint256 voterPower = stakingContract.getVotingPower(msg.sender);
-        require(
-            voterPower > 0,
-            "Must have staked tokens (voting power) to vote"
-        );
+        require(voterPower > 0, "Must have staked tokens (voting power) to vote");
 
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _voteType;
-        proposal.totalVotesParticipated =
-            proposal.totalVotesParticipated +
-            voterPower;
+        proposal.totalVotesParticipated = proposal.totalVotesParticipated + voterPower;
 
         if (_voteType == VoteType.For) {
             proposal.forVotes = proposal.forVotes + voterPower;
@@ -205,19 +171,12 @@ contract VotingContract is Ownable {
     function finishProposal(uint256 _proposalId) external {
         ProposalView storage proposal = proposals[_proposalId];
         require(proposal.id != 0, "Proposal does not exist");
-        require(
-            proposal.state == ProposalState.Active,
-            "Proposal is not active or already finished"
-        );
-        require(
-            block.timestamp >= proposal.endTime,
-            "Voting period not yet over"
-        );
+        require(proposal.state == ProposalState.Active, "Proposal is not active or already finished");
+        require(block.timestamp >= proposal.endTime, "Voting period not yet over");
 
         bool quorumReached = false;
         if (proposal.snapshotTotalStaked > 0) {
-            uint256 participationBasisPoints = (proposal
-                .totalVotesParticipated * 10000) / proposal.snapshotTotalStaked;
+            uint256 participationBasisPoints = (proposal.totalVotesParticipated * 10000) / proposal.snapshotTotalStaked;
             if (participationBasisPoints >= quorumBasisPoints) {
                 quorumReached = true;
             }
@@ -234,11 +193,7 @@ contract VotingContract is Ownable {
         }
 
         emit ProposalFinished(
-            _proposalId,
-            proposal.state,
-            proposal.forVotes,
-            proposal.againstVotes,
-            proposal.abstainVotes
+            _proposalId, proposal.state, proposal.forVotes, proposal.againstVotes, proposal.abstainVotes
         );
     }
 
@@ -248,9 +203,7 @@ contract VotingContract is Ownable {
      * @notice Fetches the proposal using proposalId
      * @param _proposalId proposal id to fetch
      */
-    function getProposal(
-        uint256 _proposalId
-    )
+    function getProposal(uint256 _proposalId)
         external
         view
         returns (
@@ -289,10 +242,7 @@ contract VotingContract is Ownable {
     /**
      * @notice
      */
-    function getVote(
-        uint256 _proposalId,
-        address _voter
-    ) external view returns (bool hasVoted, VoteType voteChoice) {
+    function getVote(uint256 _proposalId, address _voter) external view returns (bool hasVoted, VoteType voteChoice) {
         ProposalView storage proposal = proposals[_proposalId];
         require(proposal.id != 0, "Proposal does not exist");
         return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);

@@ -13,11 +13,7 @@ contract BasicVestingGovernanceToken is ERC20, ERC20Burnable, Ownable {
 
     uint256 public totalVestedReleased;
 
-    event VestingScheduleCreated(
-        uint256 totalAmount,
-        uint256 startTime,
-        uint256 duration
-    );
+    event VestingScheduleCreated(uint256 totalAmount, uint256 startTime, uint256 duration);
     event VestedTokensReleased(address indexed to, uint256 amount);
 
     constructor(
@@ -28,14 +24,8 @@ contract BasicVestingGovernanceToken is ERC20, ERC20Burnable, Ownable {
         uint256 _vestingDurationInSeconds,
         address _initialOwner
     ) ERC20(_name, _symbol) Ownable(_initialOwner) {
-        require(
-            _initialOwner != address(0),
-            "Ownable: initial owner is the zero address"
-        );
-        require(
-            _vestingDurationInSeconds > 0,
-            "Vesting: duration must be greater than zero"
-        );
+        require(_initialOwner != address(0), "Ownable: initial owner is the zero address");
+        require(_vestingDurationInSeconds > 0, "Vesting: duration must be greater than zero");
 
         vestingStartTime = block.timestamp;
         vestingDuration = _vestingDurationInSeconds;
@@ -49,11 +39,7 @@ contract BasicVestingGovernanceToken is ERC20, ERC20Burnable, Ownable {
             _mint(address(this), _totalVestedSupply);
         }
 
-        emit VestingScheduleCreated(
-            _totalVestedSupply,
-            vestingStartTime,
-            vestingDuration
-        );
+        emit VestingScheduleCreated(_totalVestedSupply, vestingStartTime, vestingDuration);
     }
 
     function currentlyVested() public view returns (uint256) {
@@ -61,7 +47,7 @@ contract BasicVestingGovernanceToken is ERC20, ERC20Burnable, Ownable {
             return 0;
         }
 
-        uint timeElapsed = block.timestamp - vestingStartTime;
+        uint256 timeElapsed = block.timestamp - vestingStartTime;
 
         if (timeElapsed >= vestingDuration) {
             return totalVestedSupply;
@@ -73,10 +59,7 @@ contract BasicVestingGovernanceToken is ERC20, ERC20Burnable, Ownable {
     function releaseVestedTokens() public onlyOwner {
         uint256 totalVestedAmount = currentlyVested();
 
-        require(
-            totalVestedAmount > totalVestedReleased,
-            "Vesting: no new tokens have vested"
-        );
+        require(totalVestedAmount > totalVestedReleased, "Vesting: no new tokens have vested");
 
         uint256 amountToRelease = totalVestedAmount - totalVestedReleased;
 
@@ -87,18 +70,11 @@ contract BasicVestingGovernanceToken is ERC20, ERC20Burnable, Ownable {
         emit VestedTokensReleased(owner(), amountToRelease);
     }
 
-    function _update(
-        address from,
-        address to,
-        uint256 amount
-    ) internal virtual override {
+    function _update(address from, address to, uint256 amount) internal virtual override {
         super._update(from, to, amount);
 
         if (from == address(this)) {
-            require(
-                to == owner() && msg.sender == owner(),
-                "ERC20: cannot transfer locked vested tokens"
-            );
+            require(to == owner() && msg.sender == owner(), "ERC20: cannot transfer locked vested tokens");
         }
     }
 }

@@ -42,17 +42,11 @@ contract TestStakingContract is Test {
         assertEq(stakingContract.stakedBalance(tempWallet), 600);
     }
 
-    function testStakeWithoutApproval(
-        address tempWallet
-    ) public receiveTokens(tempWallet) {
+    function testStakeWithoutApproval(address tempWallet) public receiveTokens(tempWallet) {
         vm.prank(tempWallet);
         vm.expectRevert(
             abi.encodeWithSelector(
-                bytes4(
-                    keccak256(
-                        "ERC20InsufficientAllowance(address,uint256,uint256)"
-                    )
-                ),
+                bytes4(keccak256("ERC20InsufficientAllowance(address,uint256,uint256)")),
                 address(stakingContract),
                 0,
                 500
@@ -75,9 +69,7 @@ contract TestStakingContract is Test {
         stakingContract.initiateUnstaking(400);
         vm.stopPrank();
 
-        (uint256 amount, uint256 unlockTime) = stakingContract.unstakingRequest(
-            tempWallet
-        );
+        (uint256 amount, uint256 unlockTime) = stakingContract.unstakingRequest(tempWallet);
 
         assertEq(amount, 400);
         assertGe(unlockTime, block.timestamp);

@@ -37,11 +37,9 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
     event RewardDurationUpdated(uint256 newDuration);
     event MaxAprUpdated(uint256 newMaxAprInBps);
 
-    constructor(
-        address _governanceTokenAddress,
-        uint256 _initialMaxAprInBps,
-        address _initialOwner
-    ) Ownable(_initialOwner) {
+    constructor(address _governanceTokenAddress, uint256 _initialMaxAprInBps, address _initialOwner)
+        Ownable(_initialOwner)
+    {
         governanceToken = IERC20(_governanceTokenAddress);
         maxAprInBps = _initialMaxAprInBps;
     }

@@ -82,7 +82,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
      * @notice Calculates cumulative rewards per token. applying the APR cap.
      * @dev This is the core logic change. It determines the effective reward rate by comparing the owner-set rate with the rate required to meet the APR cap.
      */
-    function rewardperToken() public view returns (uint256) {
+    function rewardPerToken() public view returns (uint256) {
         if (_totalSupply == 0) {
             return rewardPerTokenStored;
         }
@@ -123,12 +123,12 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         }
     }
 
-    function unStake(uint256 amount) external nonReentrant updateReward(msg.sender) {
+    function unStake(uint256 amount) public nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Staking: Cannot unstake 0 tokens");
         require(_balances[msg.sender] >= amount, "Staking: Not enough staked balance");
         _totalSupply = _totalSupply - amount;
         _balances[msg.sender] = _balances[msg.sender] - amount;
-        stakingToken.transfer(msg.sender, amount);
+        governanceToken.transfer(msg.sender, amount);
         emit Unstaked(msg.sender, amount);
     }
 
@@ -156,7 +156,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         require(rewardRate * rewardDuration <= balance, "Provided reward amount is greater than contract's balance");
 
         lastUpdateTime = block.timestamp;
-        periodFinish = block.timestamp.add(rewardDuration);
+        periodFinish = block.timestamp + rewardDuration;
         emit RewardRateUpdated(rewardRate);
     }
 

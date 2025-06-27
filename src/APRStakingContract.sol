@@ -40,11 +40,13 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
 
     // -- Events --
     event Staked(address indexed user, uint256 amount);
-    event Unstaked(address indexed user, uint256 amount);
+    event UnstakeInitiated(address indexed user, uint256 amount, uint256 unlockTime);
+    event Withdrawn(address indexed user, uint256 amount);
     event RewardClaimed(address indexed user, uint256 amount);
     event RewardRateUpdated(uint256 newRewardRate);
     event RewardDurationUpdated(uint256 newDuration);
     event MaxAprUpdated(uint256 newMaxAprInBps);
+    event UnstakePeriodUpdated(uint256 newPeriod);
 
     // -- Modifiers --
     modifier updateReward(address account) {
@@ -57,11 +59,15 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         _;
     }
 
-    constructor(address _governanceTokenAddress, uint256 _initialMaxAprInBps, address _initialOwner)
-        Ownable(_initialOwner)
-    {
+    constructor(
+        address _governanceTokenAddress,
+        uint256 _initialMaxAprInBps,
+        uint256 _initialUnstakePeriod,
+        address _initialOwner
+    ) Ownable(_initialOwner) {
         governanceToken = IERC20(_governanceTokenAddress);
         maxAprInBps = _initialMaxAprInBps;
+        unstakePeriod = _initialUnstakePeriod;
     }
 
     // -- Views --
@@ -89,7 +95,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
 
         uint256 effectiveRewardRate = rewardRate;
         if (maxAprInBps > 0) {
-            uint256 cappedRate = _totalSupply * maxAprInBps / SECONDS_IN_YEAR / BPS_DIVISOR;
+            uint256 cappedRate = (_totalSupply * maxAprInBps) / SECONDS_IN_YEAR / BPS_DIVISOR;
 
             if (cappedRate < effectiveRewardRate) {
                 effectiveRewardRate = cappedRate;
@@ -97,17 +103,17 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         }
 
         return rewardPerTokenStored
-            + (lastTimeRewardApplicable() - lastUpdateTime * effectiveRewardRate * 1e18 / _totalSupply);
+            + (lastTimeRewardApplicable() - (lastUpdateTime * effectiveRewardRate * 1e18) / _totalSupply);
     }
 
     function earned(address account) public view returns (uint256) {
-        return _balances[account] * (rewardPerToken() - userRewardPerTokenPaid[account]) / 1e18 + rewards[account];
+        return (_balances[account] * (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18 + rewards[account];
     }
 
     // -- External Functions --
 
     function stake(uint256 amount) external nonReentrant updateReward(msg.sender) {
-        require(amount > 0, "Staking: Cannot stake  tokens");
+        require(amount > 0, "Staking: Cannot stake 0 tokens");
         _totalSupply = _totalSupply + amount;
         _balances[msg.sender] = _balances[msg.sender] + amount;
         governanceToken.transferFrom(msg.sender, address(this), amount);
@@ -123,18 +129,40 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         }
     }
 
-    function unStake(uint256 amount) public nonReentrant updateReward(msg.sender) {
+    function initiateUnstake(uint256 amount) public nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Staking: Cannot unstake 0 tokens");
         require(_balances[msg.sender] >= amount, "Staking: Not enough staked balance");
+        require(unstakingRequests[msg.sender].amount == 0, "Staking: Unstake request already in progress");
+
         _totalSupply = _totalSupply - amount;
         _balances[msg.sender] = _balances[msg.sender] - amount;
-        governanceToken.transfer(msg.sender, amount);
-        emit Unstaked(msg.sender, amount);
+
+        uint256 unlockTime = block.timestamp + unstakePeriod;
+        unstakingRequests[msg.sender] = UnstakeInfo({amount: amount, unlockTime: unlockTime});
+
+        emit UnstakeInitiated(msg.sender, amount, unlockTime);
+    }
+
+    function withdraw() external nonReentrant {
+        UnstakeInfo storage request = unstakingRequests[msg.sender];
+        require(request.amount > 0, "Withdraw: No unstake request found");
+        require(block.timestamp >= request.unlockTime, "Withdraw: Unstake period not yet over");
+
+        uint256 amountToWithdraw = request.amount;
+
+        delete unstakingRequests[msg.sender];
+
+        governanceToken.transfer(msg.sender, amountToWithdraw);
+        emit Withdrawn(msg.sender, amountToWithdraw);
     }
 
     function exit() external {
-        unStake(_balances[msg.sender]);
         claimRewards();
+
+        uint256 balance = _balances[msg.sender];
+        if (balance > 0) {
+            initiateUnstake(balance);
+        }
     }
 
     // -- Owner-Only Functions --
@@ -169,5 +197,10 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
     function setMaxApr(uint256 _newMaxAprInBps) external onlyOwner {
         maxAprInBps = _newMaxAprInBps;
         emit MaxAprUpdated(_newMaxAprInBps);
+    }
+
+    function setUnstakePeriod(uint256 _newPeriod) external onlyOwner {
+        unstakePeriod = _newPeriod;
+        emit UnstakePeriodUpdated(_newPeriod);
     }
 }

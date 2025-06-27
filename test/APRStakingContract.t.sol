@@ -126,5 +126,4 @@ contract APRStakingContractTest is Test {
         // Assert within tolerance
         assertApproxEqAbs(actualReward, expectedReward, 1e12); // ~0.000001 token margin
     }
-
 }

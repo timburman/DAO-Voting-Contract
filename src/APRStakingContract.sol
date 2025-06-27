@@ -103,7 +103,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         }
 
         return rewardPerTokenStored
-            + (lastTimeRewardApplicable() - (lastUpdateTime * effectiveRewardRate * 1e18) / _totalSupply);
+            + ((lastTimeRewardApplicable() - lastUpdateTime) * effectiveRewardRate * 1e18) / _totalSupply;
     }
 
     function earned(address account) public view returns (uint256) {
@@ -114,8 +114,10 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
 
     function stake(uint256 amount) external nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Staking: Cannot stake 0 tokens");
-        _totalSupply = _totalSupply + amount;
-        _balances[msg.sender] = _balances[msg.sender] + amount;
+        unchecked {
+            _totalSupply = _totalSupply + amount;
+            _balances[msg.sender] = _balances[msg.sender] + amount;
+        }
         governanceToken.transferFrom(msg.sender, address(this), amount);
         emit Staked(msg.sender, amount);
     }
@@ -176,7 +178,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         } else {
             uint256 remaining = periodFinish - block.timestamp;
             uint256 leftover = remaining * rewardRate;
-            rewardRate = reward + leftover / rewardDuration;
+            rewardRate = (reward + leftover) / rewardDuration;
         }
 
         uint256 balance = governanceToken.balanceOf(address(this));
@@ -190,16 +192,18 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
 
     function setRewardDuration(uint256 _rewardDuration) external onlyOwner {
         require(block.timestamp > periodFinish, "Cannot alter duration during an active reward period");
-        rewardDuration = block.timestamp;
+        rewardDuration = _rewardDuration;
         emit RewardDurationUpdated(_rewardDuration);
     }
 
     function setMaxApr(uint256 _newMaxAprInBps) external onlyOwner {
+        require(_newMaxAprInBps <= BPS_DIVISOR, "APR exceeds 100%");
         maxAprInBps = _newMaxAprInBps;
         emit MaxAprUpdated(_newMaxAprInBps);
     }
 
     function setUnstakePeriod(uint256 _newPeriod) external onlyOwner {
+        require(_newPeriod <= 30 days, "Unstake period cannot be more than 30 days");
         unstakePeriod = _newPeriod;
         emit UnstakePeriodUpdated(_newPeriod);
     }

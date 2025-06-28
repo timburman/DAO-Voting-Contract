@@ -133,7 +133,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
 
     function initiateUnstake(uint256 amount) public nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Staking: Cannot unstake 0 tokens");
-        require(_balances[msg.sender] >= amount, "Staking: Not enough staked balance");
+        require(_balances[msg.sender] >= amount, "Staking: Insufficient balance");
         require(unstakingRequests[msg.sender].amount == 0, "Staking: Unstake request already in progress");
 
         _totalSupply = _totalSupply - amount;

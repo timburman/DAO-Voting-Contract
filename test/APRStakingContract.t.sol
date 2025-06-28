@@ -126,4 +126,130 @@ contract APRStakingContractTest is Test {
         // Assert within tolerance
         assertApproxEqAbs(actualReward, expectedReward, 1e12); // ~0.000001 token margin
     }
+
+    function testEarnedRewardIncreasesOverTime() public {
+        uint256 stakeAmount = 100 ether;
+        uint256 rewardAmount = 10 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        stakingContract.notifyRewardAmount(rewardAmount);
+
+        skip(1 days);
+
+        uint256 earned1 = stakingContract.earned(user1);
+
+        skip(1 days);
+
+        uint256 earned2 = stakingContract.earned(user1);
+
+        assertGt(earned2, earned1, "Earned rewards should increase over time");
+    }
+
+    function testEarnedRewardWithZeroStaked() public view {
+        uint256 earned = stakingContract.earned(user1);
+        assertEq(earned, 0, "Earned rewards should be zero when no tokens are staked");
+    }
+
+    function testClaimRewardsTransferCorrectAmountandResetUserReward() public {
+        uint256 stakeAmount = 100 ether;
+        uint256 rewardAmount = 10 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        stakingContract.notifyRewardAmount(rewardAmount);
+
+        skip(1 days);
+
+        uint256 beforeClaim = governanceToken.balanceOf(user1);
+        vm.prank(user1);
+        stakingContract.claimRewards();
+
+        uint256 afterClaim = governanceToken.balanceOf(user1);
+
+        uint256 claimed = afterClaim - beforeClaim;
+        assertGt(claimed, 0, "Claimed rewards should be greater than zero");
+
+        uint256 postClaimedReward = stakingContract.earned(user1);
+        assertEq(postClaimedReward, 0, "User's earned rewards should be reset after claiming");
+    }
+
+    function testClaimEmitsEvent() public {
+        uint256 stakeAmount = 100 ether;
+        uint256 rewardAmount = 10 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        stakingContract.notifyRewardAmount(rewardAmount);
+
+        skip(1 days);
+
+        vm.startPrank(user1);
+        vm.expectEmit(true, false, false, true);
+        emit APRStakingContract.RewardClaimed(user1, stakingContract.earned(user1));
+        stakingContract.claimRewards();
+        vm.stopPrank();
+    }
+
+    // -- Unstaking Tests --
+    function testInitiateUnstakeLocksTokens() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        stakingContract.initiateUnstake(50 ether);
+        vm.stopPrank();
+
+        assertEq(
+            stakingContract.balanceOf(user1), 50 ether, "User's balance should be reduced after initiating unstake"
+        );
+        (uint256 amount, uint256 unlockTime) = stakingContract.unstakingRequests(user1);
+        assertEq(amount, 50 ether, "Unstake amount should match initiated amount");
+        assertGt(unlockTime, block.timestamp, "Unlock time should be in the future");
+    }
+
+    function testInitiateUnstakeRevertsOnZero() public {
+        vm.startPrank(user1);
+        vm.expectRevert("Staking: Cannot unstake 0 tokens");
+        stakingContract.initiateUnstake(0);
+        vm.stopPrank();
+    }
+
+    function testInitiateUnstakeRevertsOnInsufficientBalance() public {
+        vm.startPrank(user1);
+        vm.expectRevert("Staking: Insufficient balance");
+        stakingContract.initiateUnstake(100 ether);
+        vm.stopPrank();
+    }
+
+    function testUnstakeDecreasesBalance() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        stakingContract.initiateUnstake(50 ether);
+        vm.stopPrank();
+
+        assertEq(stakingContract.balanceOf(user1), 50 ether, "User's balance should decrease after unstaking");
+    }
 }

@@ -84,6 +84,11 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
         return block.timestamp < periodFinish ? block.timestamp : periodFinish;
     }
 
+    function getAvailableRewardBalance() external view returns (uint256) {
+        uint256 totalBalance = governanceToken.balanceOf(address(this));
+        return totalBalance > _totalSupply ? totalBalance - _totalSupply : 0;
+    }
+
     /**
      * @notice Calculates cumulative rewards per token. applying the APR cap.
      * @dev This is the core logic change. It determines the effective reward rate by comparing the owner-set rate with the rate required to meet the APR cap.
@@ -171,8 +176,18 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
 
     /**
      * @notice Called by the owner to start/top-up a rewards distribution period
+     * @dev Owner must transfer the reward tokens to this contract before calling this function.
      */
     function notifyRewardAmount(uint256 reward) external onlyOwner updateReward(address(0)) {
+        require(reward > 0, "Reward amount must be greater than 0");
+
+        uint256 balanceBefore = governanceToken.balanceOf(address(this));
+
+        governanceToken.transferFrom(msg.sender, address(this), reward);
+
+        uint256 balanceAfter = governanceToken.balanceOf(address(this));
+        require(balanceAfter >= balanceBefore + reward, "Token transfer failed or insufficient balance");
+
         if (block.timestamp >= periodFinish) {
             rewardRate = reward / rewardDuration;
         } else {
@@ -181,9 +196,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
             rewardRate = (reward + leftover) / rewardDuration;
         }
 
-        uint256 balance = governanceToken.balanceOf(address(this));
         require(rewardRate > 0, "Reward reate must be greater than 0");
-        require(rewardRate * rewardDuration <= balance, "Provided reward amount is greater than contract's balance");
 
         lastUpdateTime = block.timestamp;
         periodFinish = block.timestamp + rewardDuration;

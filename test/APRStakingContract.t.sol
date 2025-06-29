@@ -343,4 +343,13 @@ contract APRStakingContractTest is Test {
         assertGt(unstakeAmount, 0, "User should have unstaked tokens on exit");
         assertGt(unlockTime, block.timestamp, "Unstake unlock time should be in the future");
     }
+
+    function testExitWithNoStakedTokens() public {
+        vm.startPrank(user1);
+        vm.expectRevert("Staking: Cannot stake 0 tokens");
+        stakingContract.exit();
+        vm.stopPrank();
+    }
+
+    // -- Owner-Only Functions Tests --
 }

@@ -252,4 +252,95 @@ contract APRStakingContractTest is Test {
 
         assertEq(stakingContract.balanceOf(user1), 50 ether, "User's balance should decrease after unstaking");
     }
+
+    // -- Withdraw Tests --
+    function testWithdrawAfterUnstakePeriod() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        stakingContract.initiateUnstake(50 ether);
+        vm.stopPrank();
+
+        skip(7 days); // Wait for the unstake period to end
+
+        uint256 beforeWithdraw = governanceToken.balanceOf(user1);
+        vm.startPrank(user1);
+        stakingContract.withdraw();
+        vm.stopPrank();
+
+        uint256 afterWithdraw = governanceToken.balanceOf(user1);
+        uint256 withdrawnAmount = afterWithdraw - beforeWithdraw;
+
+        assertEq(withdrawnAmount, 50 ether, "Withdrawn amount should match unstaked amount");
+    }
+
+    function testWithdrawBeforeUnstakePeriodReverts() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        stakingContract.initiateUnstake(50 ether);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert("Withdraw: Unstake period not yet over");
+        stakingContract.withdraw();
+        vm.stopPrank();
+    }
+
+    function testCannotInitiateUnstakeIfAlreadyInProgress() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        stakingContract.initiateUnstake(50 ether);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert("Staking: Unstake request already in progress");
+        stakingContract.initiateUnstake(20 ether);
+        vm.stopPrank();
+    }
+
+    // -- Exit Tests --
+    function testExitClaimsRewardsAndInitiatesUnstake() public {
+        uint256 stakeAmount = 100 ether;
+        uint256 rewardAmount = 10 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        stakingContract.notifyRewardAmount(rewardAmount);
+
+        skip(1 days);
+
+        uint256 beforeExit = governanceToken.balanceOf(user1);
+        vm.startPrank(user1);
+        stakingContract.exit();
+        vm.stopPrank();
+        uint256 afterExit = governanceToken.balanceOf(user1);
+        uint256 claimedRewards = afterExit - beforeExit;
+
+        assertGt(claimedRewards, 0, "User should claim rewards on exit");
+
+        (uint256 unstakeAmount, uint256 unlockTime) = stakingContract.unstakingRequests(user1);
+        assertGt(unstakeAmount, 0, "User should have unstaked tokens on exit");
+        assertGt(unlockTime, block.timestamp, "Unstake unlock time should be in the future");
+    }
 }

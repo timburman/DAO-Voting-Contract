@@ -23,7 +23,6 @@ contract APRStakingContractTest is Test {
         vm.startPrank(owner);
         governanceToken.mint(user1, 1000 ether);
         governanceToken.mint(user2, 10000 ether);
-        governanceToken.mint(address(stakingContract), 100_000 ether);
         vm.stopPrank();
     }
 
@@ -63,8 +62,11 @@ contract APRStakingContractTest is Test {
         stakingContract.stake(100 ether);
         vm.stopPrank();
 
-        vm.prank(owner);
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), 10 ether);
         stakingContract.notifyRewardAmount(10 ether);
+
+        vm.stopPrank();
 
         skip(1 days);
 
@@ -98,8 +100,10 @@ contract APRStakingContractTest is Test {
         vm.stopPrank();
 
         // owner funds the rewards
-        vm.prank(owner);
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
         stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
 
         // rewardRate = rewardAmount / rewardDuration = 0.05 ether / 30 days
         uint256 rewardRate = rewardAmount / 30 days;
@@ -136,8 +140,10 @@ contract APRStakingContractTest is Test {
         stakingContract.stake(stakeAmount);
         vm.stopPrank();
 
-        vm.prank(owner);
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
         stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
 
         skip(1 days);
 
@@ -164,8 +170,10 @@ contract APRStakingContractTest is Test {
         stakingContract.stake(stakeAmount);
         vm.stopPrank();
 
-        vm.prank(owner);
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
         stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
 
         skip(1 days);
 
@@ -191,8 +199,10 @@ contract APRStakingContractTest is Test {
         stakingContract.stake(stakeAmount);
         vm.stopPrank();
 
-        vm.prank(owner);
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
         stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
 
         skip(1 days);
 
@@ -325,8 +335,10 @@ contract APRStakingContractTest is Test {
         stakingContract.stake(stakeAmount);
         vm.stopPrank();
 
-        vm.prank(owner);
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
         stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
 
         skip(1 days);
 
@@ -345,10 +357,17 @@ contract APRStakingContractTest is Test {
     }
 
     function testExitWithNoStakedTokens() public {
-        vm.startPrank(user1);
-        vm.expectRevert("Staking: Cannot stake 0 tokens");
+        uint256 balanceBeforeExit = governanceToken.balanceOf(user1);
+
+        vm.prank(user1);
         stakingContract.exit();
-        vm.stopPrank();
+
+        uint256 balanceAfterExit = governanceToken.balanceOf(user1);
+
+        assertEq(balanceAfterExit, balanceBeforeExit, "Balance should remain unchanged when no tokens are staked");
+
+        (uint256 unstakeAmount,) = stakingContract.unstakingRequests(user1);
+        assertEq(unstakeAmount, 0, "Should have no unstake request when no tokens are staked");
     }
 
     // -- Owner-Only Functions Tests --

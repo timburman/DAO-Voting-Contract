@@ -181,6 +181,9 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
     function notifyRewardAmount(uint256 reward) external onlyOwner updateReward(address(0)) {
         require(reward > 0, "Reward amount must be greater than 0");
 
+        uint256 allowance = governanceToken.allowance(msg.sender, address(this));
+        require(allowance >= reward, "Insufficient token allowance");
+
         uint256 balanceBefore = governanceToken.balanceOf(address(this));
 
         governanceToken.transferFrom(msg.sender, address(this), reward);

@@ -371,4 +371,301 @@ contract APRStakingContractTest is Test {
     }
 
     // -- Owner-Only Functions Tests --
+
+    function testNotifyRewardAmountSetsCorrectRewardRate() public {
+        uint256 rewardAmount = 100 ether;
+
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
+        stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
+
+        uint256 exprectedRewardRate = rewardAmount / 30 days;
+        assertEq(stakingContract.rewardRate(), exprectedRewardRate, "Reward rate should be set correctly");
+    }
+
+    function testNotifyRewardAmountRevertsOnZero() public {
+        vm.prank(owner);
+        vm.expectRevert("Reward amount must be greater than 0");
+        stakingContract.notifyRewardAmount(0);
+    }
+
+    function testNotifyRewardAmountRevertsOnInsufficientAllowance() public {
+        uint256 rewardAmount = 100 ether;
+
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount - 1);
+        vm.expectRevert("Insufficient token allowance");
+        stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
+    }
+
+    function testNotifyRewardAmountRevertsOnNonOwner() public {
+        uint256 rewardAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), rewardAmount);
+        vm.expectRevert();
+        stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
+    }
+
+    function testNotifyRewardAmountExtendsPeriod() public {
+        uint256 firstReward = 50 ether;
+        uint256 secondReward = 30 ether;
+
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), firstReward);
+        stakingContract.notifyRewardAmount(firstReward);
+
+        skip(15 days);
+
+        governanceToken.approve(address(stakingContract), secondReward);
+        stakingContract.notifyRewardAmount(secondReward);
+        vm.stopPrank();
+
+        assertGt(stakingContract.periodFinish(), block.timestamp + 29 days);
+    }
+
+    function testSetRewardDuration() public {
+        uint256 newDuration = 60 days;
+
+        vm.startPrank(owner);
+        stakingContract.setRewardDuration(newDuration);
+        vm.stopPrank();
+
+        assertEq(stakingContract.rewardDuration(), newDuration, "Reward duration should be updated");
+    }
+
+    function testSetRewardDurationRevertsWhenActive() public {
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), 100 ether);
+        stakingContract.notifyRewardAmount(100 ether);
+
+        vm.expectRevert("Cannot alter duration during an active reward period");
+        stakingContract.setRewardDuration(60 days);
+        vm.stopPrank();
+    }
+
+    function testSetRewardDurationRevertsOnNonOwner() public {
+        vm.startPrank(user1);
+        vm.expectRevert();
+        stakingContract.setRewardDuration(60 days);
+        vm.stopPrank();
+    }
+
+    function testSetMaxApr() public {
+        uint256 newMaxApr = 2000;
+
+        vm.startPrank(owner);
+        stakingContract.setMaxApr(newMaxApr);
+        vm.stopPrank();
+
+        assertEq(stakingContract.maxAprInBps(), newMaxApr, "Max APR should be updated");
+    }
+
+    function testSetMaxAprRevertsOnInvalidValue() public {
+        uint256 invalidApr = 10001;
+
+        vm.startPrank(owner);
+        vm.expectRevert("APR exceeds 100%");
+        stakingContract.setMaxApr(invalidApr);
+        vm.stopPrank();
+    }
+
+    function testSetMaxAprRevertsOnNonOwner() public {
+        vm.startPrank(user1);
+        vm.expectRevert();
+        stakingContract.setMaxApr(2000);
+        vm.stopPrank();
+    }
+
+    function testSetUnstakePeriod() public {
+        uint256 newPeriod = 14 days;
+
+        vm.startPrank(owner);
+        stakingContract.setUnstakePeriod(newPeriod);
+        vm.stopPrank();
+
+        assertEq(stakingContract.unstakePeriod(), newPeriod, "Unstake period should be updated");
+    }
+
+    function testSetUnstakePeriodRevertsOnInvalidValue() public {
+        uint256 invalidPeriod = 31 days;
+
+        vm.startPrank(owner);
+        vm.expectRevert("Unstake period cannot be more than 30 days");
+        stakingContract.setUnstakePeriod(invalidPeriod);
+        vm.stopPrank();
+    }
+
+    function testSetUnstakePeriodRevertsOnNonOwner() public {
+        vm.startPrank(user1);
+        vm.expectRevert();
+        stakingContract.setUnstakePeriod(14 days);
+        vm.stopPrank();
+    }
+
+    // -- Edge Cases and Integration Tests --
+
+    function testMultipleUsersStakingAndClaiming() public {
+        uint256 stakeAmount1 = 100 ether;
+        uint256 stakeAmount2 = 200 ether;
+        uint256 rewardAmount = 150 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount1);
+        stakingContract.stake(stakeAmount1);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        governanceToken.approve(address(stakingContract), stakeAmount2);
+        stakingContract.stake(stakeAmount2);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
+        stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
+
+        skip(1 days);
+
+        uint256 user1BalanceBefore = governanceToken.balanceOf(user1);
+        vm.prank(user1);
+        stakingContract.claimRewards();
+        uint256 user1Reward = governanceToken.balanceOf(user1) - user1BalanceBefore;
+
+        uint256 user2BalanceBefore = governanceToken.balanceOf(user2);
+        vm.prank(user2);
+        stakingContract.claimRewards();
+        uint256 user2Reward = governanceToken.balanceOf(user2) - user2BalanceBefore;
+
+        assertApproxEqRel(user2Reward, user1Reward * 2, 1e16); // 1% tolerance
+    }
+
+    function testStakeAfterUnstakeRequest() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+
+        stakingContract.initiateUnstake(50 ether);
+
+        governanceToken.approve(address(stakingContract), 25 ether);
+        stakingContract.stake(25 ether);
+        vm.stopPrank();
+
+        assertEq(stakingContract.balanceOf(user1), 75 ether, "Should be able to stake after unstake request");
+    }
+
+    function testRewardCalculationWithZeroTotalSupply() public view {
+        uint256 rewardPerToken = stakingContract.rewardPerToken();
+        assertEq(rewardPerToken, 0, "Reward per token should be 0 when no tokens are staked");
+    }
+
+    function testGetAvailableRewardBalance() public {
+        uint256 stakeAmount = 100 ether;
+        uint256 rewardAmount = 50 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
+        stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
+
+        uint256 availableRewards = stakingContract.getAvailableRewardBalance();
+        assertEq(availableRewards, rewardAmount, "Available reward balance should equal deposited rewards");
+    }
+
+    function testClaimRewardsWithZeroRewards() public {
+        uint256 balanceBefore = governanceToken.balanceOf(user1);
+
+        vm.prank(user1);
+        stakingContract.claimRewards();
+
+        uint256 balanceAfter = governanceToken.balanceOf(user1);
+        assertEq(balanceAfter, balanceBefore, "Balance should not change when claiming zero rewards");
+    }
+
+    function testWithdrawWithoutUnstakeRequest() public {
+        vm.startPrank(user1);
+        vm.expectRevert("Withdraw: No unstake request found");
+        stakingContract.withdraw();
+        vm.stopPrank();
+    }
+
+    // -- Event Tests --
+
+    function testNotifyRewardAmountEmitsEvent() public {
+        uint256 rewardAmount = 100 ether;
+
+        vm.startPrank(owner);
+        governanceToken.approve(address(stakingContract), rewardAmount);
+
+        vm.expectEmit(true, false, false, true);
+        emit APRStakingContract.RewardRateUpdated(rewardAmount / 30 days);
+
+        stakingContract.notifyRewardAmount(rewardAmount);
+        vm.stopPrank();
+    }
+
+    function testSetMaxAprEmitsEvent() public {
+        uint256 newMaxApr = 2000;
+
+        vm.startPrank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit APRStakingContract.MaxAprUpdated(newMaxApr);
+
+        stakingContract.setMaxApr(newMaxApr);
+        vm.stopPrank();
+    }
+
+    function testSetRewardDurationEmitsEvent() public {
+        uint256 newDuration = 60 days;
+
+        vm.startPrank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit APRStakingContract.RewardDurationUpdated(newDuration);
+
+        stakingContract.setRewardDuration(newDuration);
+        vm.stopPrank();
+    }
+
+    function testInitiateUnstakeEmitsEvent() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+
+        vm.expectEmit(true, false, false, true);
+        emit APRStakingContract.UnstakeInitiated(user1, 50 ether, block.timestamp + 7 days);
+
+        stakingContract.initiateUnstake(50 ether);
+        vm.stopPrank();
+    }
+
+    function testWithdrawEmitsEvent() public {
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount);
+        stakingContract.initiateUnstake(50 ether);
+        vm.stopPrank();
+
+        skip(7 days);
+
+        vm.startPrank(user1);
+        vm.expectEmit(true, false, false, true);
+        emit APRStakingContract.Withdrawn(user1, 50 ether);
+
+        stakingContract.withdraw();
+        vm.stopPrank();
+    }
 }

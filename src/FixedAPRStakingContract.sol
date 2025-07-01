@@ -415,4 +415,201 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
         totalStaked += rewardAmount;
         rewardPool.totalReserved += reservedReward;
     }
+
+    // -- View functions --
+
+    /**
+     * @notice Get number of stake periods available
+     */
+    function getStakePeriodsCount() external view returns (uint256) {
+        return stakePeriods.length;
+    }
+
+    /**
+     * @notice get stake period configuration
+     */
+    function getStakePeriod(uint8 periodIndex)
+        external
+        view
+        returns (uint256 durationInDays, bool active, uint256 scaledAPR)
+    {
+        require(periodIndex < stakePeriods.length, "Invalid period index");
+        StakePeriodConfig storage period = stakePeriods[periodIndex];
+        return (period.durationInDays, period.active, period.scaledAPR);
+    }
+
+    /**
+     * @notice Get all active stake periods
+     */
+    function getActiveStakePeriods()
+        external
+        view
+        returns (uint8[] memory indices, uint256[] memory durations, uint256[] memory aprs)
+    {
+        uint256 activeCount = 0;
+        for (uint256 i = 0; i < stakePeriods.length; i++) {
+            if (stakePeriods[i].active) activeCount++;
+        }
+
+        indices = new uint8[](activeCount);
+        durations = new uint256[](activeCount);
+        aprs = new uint256[](activeCount);
+
+        uint256 currentIndex = 0;
+        for (uint8 i = 0; i < stakePeriods.length; i++) {
+            if (stakePeriods[i].active) {
+                indices[currentIndex] = i;
+                durations[currentIndex] = stakePeriods[i].durationInDays;
+                aprs[currentIndex] = stakePeriods[i].scaledAPR;
+                currentIndex++;
+            }
+        }
+    }
+
+    /**
+     * @notice Get user's stake count
+     */
+    function getTotalStaked(address user) external view returns (uint256) {
+        uint256 total = 0;
+        UserStake[] storage stakes = userStakes[user];
+
+        for (uint256 i = 0; i < stakes.length; i++) {
+            if (stakes[i].active && !stakes[i].withdrawn) {
+                total += stakes[i].amount;
+            }
+        }
+        return total;
+    }
+
+    /**
+     * @notice Get expected reward for a specific stake
+     */
+    function getExpectedReward(address user, uint256 stakeIndex) external view returns (uint256) {
+        require(stakeIndex < userStakes[user].length, "Invalid stake index");
+        return _calculateAccruedReward(user, stakeIndex);
+    }
+
+    /**
+     * @notice Get total exprected rewards for all active stakes
+     */
+    function getTotalExprectedRewards(address user) external view returns (uint256) {
+        uint256 total = 0;
+        UserStake[] storage stakes = userStakes[user];
+
+        for (uint256 i = 0; i < stakes.length; i++) {
+            if (stakes[i].active && !stakes[i].withdrawn) {
+                total += _calculateAccruedReward(user, i);
+            }
+        }
+        return total;
+    }
+
+    /**
+     * @notice Get reward pool status
+     */
+    function getRewardPoolStatus()
+        external
+        view
+        returns (
+            uint256 totalFunded,
+            uint256 totalReserved,
+            uint256 availableFunding,
+            uint256 baseAPR,
+            bool fundsAvailable
+        )
+    {
+        uint256 available =
+            rewardPool.totalFunded > rewardPool.totalReserved ? rewardPool.totalFunded - rewardPool.totalReserved : 0;
+
+        return (
+            rewardPool.totalFunded,
+            rewardPool.totalReserved,
+            available,
+            rewardPool.baseAPRFor365Days,
+            rewardPool.fundsAvailable
+        );
+    }
+
+    /**
+     * @notice get detailed stake information
+     */
+    function getStakeDetails(address user, uint256 stakeIndex)
+        external
+        view
+        returns (
+            uint256 amount,
+            uint256 stakedAt,
+            uint256 unlockTime,
+            uint256 stakePeriodDays,
+            uint256 aprInBps,
+            uint256 pendingRewards,
+            bool autoCompound,
+            bool active,
+            bool canWithdraw,
+            uint8 periodIndex
+        )
+    {
+        require(stakeIndex < userStakes[user].length, "Invalid stake index");
+
+        UserStake storage userStake = userStakes[user][stakeIndex];
+        return (
+            userStake.amount,
+            userStake.stakedAt,
+            userStake.unlockTime,
+            userStake.stakePeriodDays,
+            userStake.aprInBps,
+            _calculateAccruedReward(user, stakeIndex),
+            userStake.autoCompound,
+            userStake.active && !userStake.withdrawn,
+            block.timestamp >= userStake.unlockTime && userStake.active && !userStake.withdrawn,
+            userStake.periodIndex
+        );
+    }
+
+    /**
+     * @notice Check if APR can be changed
+     */
+    function canChangeAPR() external view returns (bool) {
+        return block.timestamp >= rewardPool.lastAPRChange + APR_CHANGE_COOLDOWN;
+    }
+
+    /**
+     * @notice Get time until next APR change allowed
+     */
+    function timeUntilNextAPRChange() external view returns (uint256) {
+        uint256 nextChangeTime = rewardPool.lastAPRChange + APR_CHANGE_COOLDOWN;
+        return block.timestamp >= nextChangeTime ? 0 : nextChangeTime - block.timestamp;
+    }
+
+    /**
+     * @notice Get all user stakes with details
+     */
+    function getAllUserStakes(address user)
+        external
+        view
+        returns (
+            uint256[] memory amounts,
+            uint256[] memory unlockTimes,
+            uint256[] memory aprs,
+            bool[] memory canWithdrawList,
+            uint8[] memory periodIndices
+        )
+    {
+        uint256 stakeCount = userStakes[user].length;
+
+        amounts = new uint256[](stakeCount);
+        unlockTimes = new uint256[](stakeCount);
+        aprs = new uint256[](stakeCount);
+        canWithdrawList = new bool[](stakeCount);
+        periodIndices = new uint8[](stakeCount);
+
+        for (uint256 i = 0; i < stakeCount; i++) {
+            UserStake storage stake_ = userStakes[user][i];
+            amounts[i] = stake_.amount;
+            unlockTimes[i] = stake_.unlockTime;
+            aprs[i] = stake_.aprInBps;
+            canWithdrawList[i] = block.timestamp >= stake_.unlockTime && stake_.active && !stake_.withdrawn;
+            periodIndices[i] = stake_.periodIndex;
+        }
+    }
 }

@@ -235,11 +235,11 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
             unlockTime: newUnlockTime,
             stakePeriodDays: newPeriod.durationInDays,
             aprInBps: newPeriod.scaledAPR,
-            lasstClaimTime: block.timestamp,
+            lastClaimTime: block.timestamp,
             reservedReward: newReservedReward,
             autoCompound: oldStake.autoCompound,
             active: true,
-            withdraw: false,
+            withdrawn: false,
             periodIndex: newPeriodIndex
         });
 
@@ -351,5 +351,68 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     }
 
     // -- Internal Functions --
-    function _calculateAccuredReward(address user, uint256 stakeIndex) internal view returns (uint256) {}
+    function _calculateAccruedReward(address user, uint256 stakeIndex) internal view returns (uint256) {
+        UserStake storage userStake = userStakes[user][stakeIndex];
+        if (!userStake.active || userStake.withdrawn) return 0;
+
+        uint256 stakingDuration = block.timestamp - userStake.lastClaimTime;
+        uint256 maxDuration =
+            userStake.unlockTime > userStake.lastClaimTime ? userStake.unlockTime - userStake.lastClaimTime : 0;
+        uint256 rewardDuration = stakingDuration < maxDuration ? stakingDuration : maxDuration;
+
+        if (rewardDuration == 0) return 0;
+
+        return (userStake.amount * userStake.aprInBps * rewardDuration) / (BPS_DIVISOR * 365 days);
+    }
+
+    /**
+     * @notice Create auto-compound stake with best available period
+     */
+    function _createAutoCompoundStake(address user, uint256 rewardAmount) internal {
+        uint8 bestPeriodIndex = 0;
+        bool foundPeriod = false;
+
+        for (uint8 i = uint8(stakePeriods.length); i > 0; i--) {
+            uint8 index = i - 1;
+            if (stakePeriods[index].active) {
+                // Check if reward pool can sustain this auto-compound
+                uint256 newReservedReward = (
+                    rewardAmount * stakePeriods[index].scaledAPR * stakePeriods[index].durationInDays
+                ) / (BPS_DIVISOR * 365);
+
+                if (rewardPool.totalFunded >= rewardPool.totalReserved + newReservedReward) {
+                    bestPeriodIndex = index;
+                    foundPeriod = true;
+                    break;
+                }
+            }
+        }
+
+        if (!foundPeriod) {
+            governanceToken.transfer(user, rewardAmount);
+            return;
+        }
+
+        StakePeriodConfig storage period = stakePeriods[bestPeriodIndex];
+        uint256 reservedReward = (rewardAmount * period.scaledAPR * period.durationInDays) / (BPS_DIVISOR * 365);
+        uint256 unlockTime = block.timestamp + (period.durationInDays * 1 days);
+
+        UserStake memory compoundStake = UserStake({
+            amount: rewardAmount,
+            stakedAt: block.timestamp,
+            unlockTime: unlockTime,
+            stakePeriodDays: period.durationInDays,
+            aprInBps: period.scaledAPR,
+            lastClaimTime: block.timestamp,
+            reservedReward: reservedReward,
+            autoCompound: true,
+            active: true,
+            withdrawn: false,
+            periodIndex: bestPeriodIndex
+        });
+
+        userStakes[user].push(compoundStake);
+        totalStaked += rewardAmount;
+        rewardPool.totalReserved += reservedReward;
+    }
 }

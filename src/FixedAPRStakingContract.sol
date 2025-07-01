@@ -48,6 +48,19 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
         bool fundsAvailable;
     }
 
+    struct StakeInfo {
+        uint256 amount;
+        uint256 stakedAt;
+        uint256 unlockTime;
+        uint256 stakePeriodDays;
+        uint256 aprInBps;
+        uint256 pendingRewards;
+        bool autoCompound;
+        bool active;
+        bool canWithdraw;
+        uint8 periodIndex;
+    }
+
     // Reward pool management
     StakePeriodConfig[] public stakePeriods;
     mapping(address => UserStake[]) public userStakes;
@@ -533,37 +546,22 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     /**
      * @notice get detailed stake information
      */
-    function getStakeDetails(address user, uint256 stakeIndex)
-        external
-        view
-        returns (
-            uint256 amount,
-            uint256 stakedAt,
-            uint256 unlockTime,
-            uint256 stakePeriodDays,
-            uint256 aprInBps,
-            uint256 pendingRewards,
-            bool autoCompound,
-            bool active,
-            bool canWithdraw,
-            uint8 periodIndex
-        )
-    {
+    function getStakeInfo(address user, uint256 stakeIndex) external view returns (StakeInfo memory) {
         require(stakeIndex < userStakes[user].length, "Invalid stake index");
 
         UserStake storage userStake = userStakes[user][stakeIndex];
-        return (
-            userStake.amount,
-            userStake.stakedAt,
-            userStake.unlockTime,
-            userStake.stakePeriodDays,
-            userStake.aprInBps,
-            _calculateAccruedReward(user, stakeIndex),
-            userStake.autoCompound,
-            userStake.active && !userStake.withdrawn,
-            block.timestamp >= userStake.unlockTime && userStake.active && !userStake.withdrawn,
-            userStake.periodIndex
-        );
+        return StakeInfo({
+            amount: userStake.amount,
+            stakedAt: userStake.stakedAt,
+            unlockTime: userStake.unlockTime,
+            stakePeriodDays: userStake.stakePeriodDays,
+            aprInBps: userStake.aprInBps,
+            pendingRewards: _calculateAccruedReward(user, stakeIndex),
+            autoCompound: userStake.autoCompound,
+            active: userStake.active && !userStake.withdrawn,
+            canWithdraw: block.timestamp >= userStake.unlockTime && userStake.active && !userStake.withdrawn,
+            periodIndex: userStake.periodIndex
+        });
     }
 
     /**

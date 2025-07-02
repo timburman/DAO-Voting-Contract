@@ -86,10 +86,12 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     event RewardPoolFunded(uint256 amount);
     event ExcessFundsWithdrawn(uint256 amount);
 
-    constructor(address _governanceToken) Ownable(msg.sender) {
+    constructor(address _governanceToken, uint256 _baseAPRFor365Days) Ownable(msg.sender) {
         governanceToken = IERC20(_governanceToken);
 
         _initializeStakePeriods();
+
+        _setBaseAPRInternal(_baseAPRFor365Days);
     }
 
     /**
@@ -304,18 +306,10 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     function setBaseAPR(uint256 baseAPRFor365Days) external onlyOwner {
         require(baseAPRFor365Days > 0 && baseAPRFor365Days <= MAX_APR, "Invalid base APR");
 
-        if (rewardPool.lastAPRChange != 0) {
-            require(
-                block.timestamp >= rewardPool.lastAPRChange + APR_CHANGE_COOLDOWN, "APR change cooldown not completed"
-            );
-        }
+        require(block.timestamp >= rewardPool.lastAPRChange + APR_CHANGE_COOLDOWN, "APR change cooldown not completed");
         require(baseAPRFor365Days != rewardPool.baseAPRFor365Days, "APR already set to this value");
-        rewardPool.baseAPRFor365Days = baseAPRFor365Days;
-        rewardPool.lastAPRChange = block.timestamp;
 
-        for (uint256 i = 0; i < stakePeriods.length; i++) {
-            stakePeriods[i].scaledAPR = (baseAPRFor365Days * stakePeriods[i].durationInDays) / 365;
-        }
+        _setBaseAPRInternal(baseAPRFor365Days);
 
         emit BaseAPRUpdated(baseAPRFor365Days);
     }
@@ -432,6 +426,15 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
         userStakes[user].push(compoundStake);
         totalStaked += rewardAmount;
         rewardPool.totalReserved += reservedReward;
+    }
+
+    function _setBaseAPRInternal(uint256 baseAPRFor365Days) internal {
+        rewardPool.baseAPRFor365Days = baseAPRFor365Days;
+        rewardPool.lastAPRChange = block.timestamp;
+
+        for (uint256 i = 0; i < stakePeriods.length; i++) {
+            stakePeriods[i].scaledAPR = (baseAPRFor365Days * stakePeriods[i].durationInDays) / 365;
+        }
     }
 
     // -- View functions --

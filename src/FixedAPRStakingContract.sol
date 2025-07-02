@@ -490,6 +490,13 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     /**
      * @notice Get user's stake count
      */
+    function getStakeCount(address user) external view returns (uint256) {
+        return userStakes[user].length;
+    }
+
+    /**
+     * @notice Get user's stake count
+     */
     function getTotalStaked(address user) external view returns (uint256) {
         uint256 total = 0;
         UserStake[] storage stakes = userStakes[user];

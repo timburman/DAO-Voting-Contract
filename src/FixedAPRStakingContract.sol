@@ -303,8 +303,11 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
      */
     function setBaseAPR(uint256 baseAPRFor365Days) external onlyOwner {
         require(baseAPRFor365Days > 0 && baseAPRFor365Days <= MAX_APR, "Invalid base APR");
-        require(block.timestamp >= rewardPool.lastAPRChange + APR_CHANGE_COOLDOWN, "APR change cooldown not completed");
 
+        if (rewardPool.lastAPRChange != 0) {
+            require(block.timestamp >= rewardPool.lastAPRChange + APR_CHANGE_COOLDOWN, "APR change cooldown not completed");
+        }
+        require(baseAPRFor365Days != rewardPool.baseAPRFor365Days, "APR already set to this value");
         rewardPool.baseAPRFor365Days = baseAPRFor365Days;
         rewardPool.lastAPRChange = block.timestamp;
 

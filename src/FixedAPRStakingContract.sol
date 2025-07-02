@@ -533,6 +533,16 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Estimate reward for amount and period
+     */
+    function estimateRewardForPeriod(uint256 amount, uint8 periodIndex) external view returns (uint256) {
+        require(periodIndex < stakePeriods.length, "Invalid period index");
+
+        StakePeriodConfig storage period = stakePeriods[periodIndex];
+        return (amount * period.scaledAPR * period.durationInDays) / (BPS_DIVISOR * 365);
+    }
+
+    /**
      * @notice Get reward pool status
      */
     function getRewardPoolStatus()

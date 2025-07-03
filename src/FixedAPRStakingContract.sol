@@ -61,11 +61,19 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
         uint8 periodIndex;
     }
 
+    struct CompoundPool {
+        uint256 totalAmount;
+        uint256 lastUpdateTime;
+        uint8 preferredPeriodIndex;
+        bool hasActivePool;
+    }
+
     // Reward pool management
     StakePeriodConfig[] public stakePeriods;
     mapping(address => UserStake[]) public userStakes;
     RewardPool public rewardPool;
     uint256 public totalStaked;
+    mapping(address => CompoundPool) public userCompoundPools;
 
     // Events
     event Staked(
@@ -79,6 +87,8 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     );
     event RewardsClaimed(address indexed user, uint256 amount, uint256 stakeIndex, bool autoCompound);
     event Withdrawn(address indexed user, uint256 amount, uint256 stakeIndex, uint256 rewards);
+    event RewardsAddedToPool(address indexed user, uint256 amount, uint256 totalPoolAmount);
+    event CompoundPoolFlushed(address indexed user, uint256 amount, uint256 newStakeIndex, uint8 periodIndex);
     event Restaked(address indexed user, uint256 stakeIndex, uint256 newStakeIndex, uint8 newPeriodIndex);
     event BaseAPRUpdated(uint256 newBaseAPR);
     event StakePeriodToggled(uint8 periodIndex, bool active);
@@ -171,7 +181,7 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
         userStake.lastClaimTime = block.timestamp;
 
         if (userStake.autoCompound && rewards >= MIN_AUTO_COMPOUND_AMOUNT && rewardPool.fundsAvailable) {
-            _createAutoCompoundStake(msg.sender, rewards);
+            _addToCompoundPool(msg.sender, rewards, userStake.periodIndex);
             emit RewardsClaimed(msg.sender, rewards, stakeIndex, true);
         } else {
             governanceToken.transfer(msg.sender, rewards);
@@ -295,6 +305,48 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
 
         userStake.autoCompound = enabled;
         emit AutoCompoundToggled(msg.sender, stakeIndex, enabled);
+    }
+
+    /**
+     * @notice Manually flush compound pool into new stake
+     * @param periodIndex Period index for the new stake
+     */
+    function flushCompoundPool(uint8 periodIndex) external nonReentrant {
+        require(periodIndex < stakePeriods.length, "Invalid period index");
+        require(stakePeriods[periodIndex].active, "Period not active");
+
+        CompoundPool storage pool = userCompoundPools[msg.sender];
+        require(pool.hasActivePool && pool.totalAmount > 0, "No compound pool to flush");
+
+        _flushCompoundPoolInternal(msg.sender, periodIndex);
+    }
+
+    /**
+     * @notice Flush compound pool using preferred period
+     */
+    function flushCompoundPoolAuto() external nonReentrant {
+        CompoundPool storage pool = userCompoundPools[msg.sender];
+        require(pool.hasActivePool && pool.totalAmount > 0, "No compound pool to flush");
+        require(stakePeriods[pool.preferredPeriodIndex].active, "Preferred period not active");
+
+        _flushCompoundPoolInternal(msg.sender, pool.preferredPeriodIndex);
+    }
+
+    /**
+     * @notice Withdraw all rewards from compound pool (disable auto-compound)
+     */
+    function withdrawFromCompoundPool() external nonReentrant {
+        CompoundPool storage pool = userCompoundPools[msg.sender];
+        require(pool.hasActivePool && pool.totalAmount > 0, "No active compound pool");
+
+        uint256 poolAmount = pool.totalAmount;
+
+        pool.totalAmount = 0;
+        pool.hasActivePool = false;
+
+        governanceToken.transfer(msg.sender, poolAmount);
+
+        emit RewardsAddedToPool(msg.sender, 0, 0);
     }
 
     // -- Owner Functions --
@@ -437,6 +489,85 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
         }
     }
 
+    /**
+     * @notice Add rewards to user's compound pool
+     * @param user User address
+     * @param amount Reward amount to add
+     * @param preferredPeriod Preferred period for future flush
+     */
+    function _addToCompoundPool(address user, uint256 amount, uint8 preferredPeriod) internal {
+        CompoundPool storage pool = userCompoundPools[user];
+
+        pool.totalAmount += amount;
+        pool.lastUpdateTime = block.timestamp;
+        pool.hasActivePool = true;
+
+        if (pool.preferredPeriodIndex < preferredPeriod) {
+            pool.preferredPeriodIndex = preferredPeriod;
+        }
+
+        emit RewardsAddedToPool(user, amount, pool.totalAmount);
+
+        _autoFlushIfNeeded(user);
+    }
+
+    /**
+     * @notice Auto-flush compound pool when it reaches threshold
+     * @param user User address
+     */
+    function _autoFlushIfNeeded(address user) internal {
+        CompoundPool storage pool = userCompoundPools[user];
+        if (pool.totalAmount >= 100 ether && pool.hasActivePool) {
+            _flushCompoundPoolInternal(user, pool.preferredPeriodIndex);
+        }
+    }
+
+    /**
+     * @notice Internal function to flush compound pool
+     * @param user User address
+     * @param periodIndex Period index for new stake
+     */
+    function _flushCompoundPoolInternal(address user, uint8 periodIndex) internal {
+        CompoundPool storage pool = userCompoundPools[user];
+        require(pool.hasActivePool && pool.totalAmount > 0, "No active compound pool");
+
+        uint256 poolAmount = pool.totalAmount;
+
+        StakePeriodConfig storage period = stakePeriods[periodIndex];
+        uint256 reservedReward = (poolAmount * period.scaledAPR * period.durationInDays) / (BPS_DIVISOR * 365);
+
+        require(
+            rewardPool.totalFunded >= rewardPool.totalReserved + reservedReward,
+            "Insufficient reward pool for compound flush"
+        );
+
+        uint256 unlockTime = block.timestamp + (period.durationInDays * 1 days);
+
+        UserStake memory newStake = UserStake({
+            amount: poolAmount,
+            stakedAt: block.timestamp,
+            unlockTime: unlockTime,
+            stakePeriodDays: period.durationInDays,
+            aprInBps: period.scaledAPR,
+            lastClaimTime: block.timestamp,
+            reservedReward: reservedReward,
+            autoCompound: true,
+            active: true,
+            withdrawn: false,
+            periodIndex: periodIndex
+        });
+
+        userStakes[user].push(newStake);
+        uint256 newStakeIndex = userStakes[user].length - 1;
+
+        totalStaked += poolAmount;
+        rewardPool.totalReserved += reservedReward;
+
+        pool.totalAmount = 0;
+        pool.hasActivePool = false;
+
+        emit CompoundPoolFlushed(user, poolAmount, newStakeIndex, periodIndex);
+    }
     // -- View functions --
 
     /**
@@ -497,7 +628,7 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     /**
      * @notice Get user's stake count
      */
-    function getTotalStaked(address user) external view returns (uint256) {
+    function getTotalStaked(address user) public view returns (uint256) {
         uint256 total = 0;
         UserStake[] storage stakes = userStakes[user];
 
@@ -520,7 +651,7 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
     /**
      * @notice Get total exprected rewards for all active stakes
      */
-    function getTotalExprectedRewards(address user) external view returns (uint256) {
+    function getTotalExpectedRewards(address user) public view returns (uint256) {
         uint256 total = 0;
         UserStake[] storage stakes = userStakes[user];
 
@@ -634,5 +765,61 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
             canWithdrawList[i] = block.timestamp >= stake_.unlockTime && stake_.active && !stake_.withdrawn;
             periodIndices[i] = stake_.periodIndex;
         }
+    }
+
+    /**
+     * @notice Get compound pool information for a user
+     * @param user User address
+     * @return totalAmount Total rewards accumulated in pool
+     * @return lastUpdateTime Last time rewards were added
+     * @return preferredPeriodIndex Preferred period for flushing
+     * @return hasActivePool Whether pool has any rewards
+     */
+    function getCompoundPoolInfo(address user)
+        external
+        view
+        returns (uint256 totalAmount, uint256 lastUpdateTime, uint8 preferredPeriodIndex, bool hasActivePool)
+    {
+        CompoundPool storage pool = userCompoundPools[user];
+        return (pool.totalAmount, pool.lastUpdateTime, pool.preferredPeriodIndex, pool.hasActivePool);
+    }
+
+    /**
+     * @notice Get compound pool value for a user
+     * @param user User address
+     * @return Total amount in compound pool
+     */
+    function getCompoundPoolValue(address user) external view returns (uint256) {
+        return userCompoundPools[user].totalAmount;
+    }
+
+    /**
+     * @notice Check if user has an active compound pool
+     * @param user User address
+     * @return Whether user has rewards in compound pool
+     */
+    function hasCompoundPool(address user) external view returns (bool) {
+        return userCompoundPools[user].hasActivePool && userCompoundPools[user].totalAmount > 0;
+    }
+
+    /**
+     * @notice Get compound pool threshold for auto-flush
+     * @return Threshold amount for auto-flush (100 ether)
+     */
+    function getCompoundPoolThreshold() external pure returns (uint256) {
+        return 100 ether;
+    }
+
+    /**
+     * @notice Get total user balance including staked + compound pool
+     * @param user User address
+     * @return Total balance across all stakes and compound pool
+     */
+    function getTotalUserBalance(address user) external view returns (uint256) {
+        uint256 totalUserStaked = getTotalStaked(user);
+        uint256 totalPending = getTotalExpectedRewards(user);
+        uint256 compoundPool = userCompoundPools[user].totalAmount;
+
+        return totalUserStaked + totalPending + compoundPool;
     }
 }

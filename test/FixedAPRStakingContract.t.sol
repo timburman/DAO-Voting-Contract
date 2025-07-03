@@ -33,6 +33,8 @@ contract FixedAPRStakingContractTest is Test {
     event Withdrawn(address indexed user, uint256 amount, uint256 stakeIndex, uint256 rewards);
     event BaseAPRUpdated(uint256 newBaseApr);
     event RewardPoolFunded(uint256 amount);
+    event RewardsAddedToPool(address indexed user, uint256 amount, uint256 totalPoolAmount);
+    event CompoundPoolFlushed(address indexed user, uint256 amount, uint256 newStakeIndex, uint8 periodIndex);
 
     function setUp() public {
         owner = makeAddr("owner");
@@ -98,6 +100,8 @@ contract FixedAPRStakingContractTest is Test {
         assertTrue(info.active);
         assertFalse(info.autoCompound);
         assertFalse(info.canWithdraw);
+
+        assertFalse(stakingContract.hasCompoundPool(user1));
     }
 
     function testStakeWithAutoCompound() public {
@@ -112,6 +116,8 @@ contract FixedAPRStakingContractTest is Test {
         FixedAPRStakingContract.StakeInfo memory info = stakingContract.getStakeInfo(user2, 0);
         assertTrue(info.autoCompound);
         assertEq(info.periodIndex, periodIndex);
+
+        assertFalse(stakingContract.hasCompoundPool(user2));
     }
 
     function testMultipleStakesByUser() public {
@@ -141,9 +147,88 @@ contract FixedAPRStakingContractTest is Test {
         assertEq(stake3.periodIndex, 4);
         assertFalse(stake3.autoCompound);
         assertEq(stake3.amount, 1500 ether);
+
+        skip(10 days);
+
+        uint256 totalBalance = stakingContract.getTotalUserBalance(user1);
+        assertGt(totalBalance, 4500 ether);
     }
 
-    function testClaimRewardsDuringStakePeriod() public {
+    function testWithdrawAfterPeriodCompletion() public {
+        uint256 stakeAmount = 1000 ether;
+        uint8 periodIndex = 0;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount, periodIndex, false);
+        vm.stopPrank();
+
+        skip(29 days);
+
+        FixedAPRStakingContract.StakeInfo memory info = stakingContract.getStakeInfo(user1, 0);
+        assertTrue(info.canWithdraw);
+
+        uint256 balanceBefore = governanceToken.balanceOf(user1);
+        uint256 expectedRewards = stakingContract.getExpectedReward(user1, 0);
+
+        vm.expectEmit(true, true, true, true);
+        emit Withdrawn(user1, stakeAmount, 0, expectedRewards);
+
+        vm.prank(user1);
+        stakingContract.withdraw(0);
+
+        uint256 balanceAfter = governanceToken.balanceOf(user1);
+        assertEq(balanceAfter - balanceBefore, stakeAmount + expectedRewards);
+
+        FixedAPRStakingContract.StakeInfo memory finalInfo = stakingContract.getStakeInfo(user1, 0);
+        assertFalse(finalInfo.active);
+        assertFalse(finalInfo.canWithdraw);
+    }
+
+    // Compound Pool Functionality Tests
+
+    function testClaimRewardsWithCompoundCreatesPool() public {
+        uint256 stakeAmount = 1000 ether;
+        uint8 periodIndex = 2;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount, periodIndex, true);
+        vm.stopPrank();
+
+        skip(30 days);
+
+        assertFalse(stakingContract.hasCompoundPool(user1));
+        assertEq(stakingContract.getCompoundPoolValue(user1), 0);
+
+        uint256 expectedReward = stakingContract.getExpectedReward(user1, 0);
+        assertGt(expectedReward, 0);
+
+        uint256 balanceBefore = governanceToken.balanceOf(user1);
+
+        vm.expectEmit(true, true, true, true);
+        emit RewardsAddedToPool(user1, expectedReward, expectedReward);
+
+        vm.prank(user1);
+        stakingContract.claimRewards(0);
+
+        uint256 balanceAfter = governanceToken.balanceOf(user1);
+
+        assertEq(balanceBefore, balanceAfter);
+
+        assertTrue(stakingContract.hasCompoundPool(user1));
+        assertEq(stakingContract.getCompoundPoolValue(user1), expectedReward);
+
+        (uint256 totalAmount, uint256 lastUpdateTime, uint8 preferredPeriod, bool hasActivePool) =
+            stakingContract.getCompoundPoolInfo(user1);
+
+        assertEq(totalAmount, expectedReward);
+        assertEq(lastUpdateTime, block.timestamp);
+        assertEq(preferredPeriod, periodIndex);
+        assertTrue(hasActivePool);
+    }
+
+    function testClaimRewardsWithoutAutoCompoundTransfersTokens() public {
         uint256 stakeAmount = 1000 ether;
         uint8 periodIndex = 2;
 
@@ -168,5 +253,34 @@ contract FixedAPRStakingContractTest is Test {
         skip(15 days);
         uint256 newExpectedRewards = stakingContract.getExpectedReward(user1, 0);
         assertGt(newExpectedRewards, 0);
+
+        assertFalse(stakingContract.hasCompoundPool(user1));
+    }
+
+    function testMultipleClaimsAccumulateInCompoundPool() public {
+        uint256 stakeAmount = 2000 ether;
+        uint8 periodIndex = 1;
+
+        vm.startPrank(user1);
+        governanceToken.approve(address(stakingContract), stakeAmount);
+        stakingContract.stake(stakeAmount, periodIndex, true);
+        vm.stopPrank();
+
+        skip(20 days);
+        uint256 firstReward = stakingContract.getExpectedReward(user1, 0);
+
+        vm.prank(user1);
+        stakingContract.claimRewards(0);
+
+        assertEq(stakingContract.getCompoundPoolValue(user1), firstReward);
+
+        skip(15 days);
+        uint256 secondReward = stakingContract.getExpectedReward(user1, 0);
+
+        vm.prank(user1);
+        stakingContract.claimRewards(0);
+
+        uint256 totalPoolValue = stakingContract.getCompoundPoolValue(user1);
+        assertApproxEqAbs(totalPoolValue, firstReward + secondReward, 1e15);
     }
 }

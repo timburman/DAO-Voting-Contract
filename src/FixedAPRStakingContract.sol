@@ -54,7 +54,7 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
         uint256 unlockTime;
         uint256 stakePeriodDays;
         uint256 aprInBps;
-        uint256 pendingRewards;
+        uint256 reservedReward;
         bool autoCompound;
         bool active;
         bool canWithdraw;
@@ -712,7 +712,7 @@ contract FixedAPRStakingContract is Ownable, ReentrancyGuard {
             unlockTime: userStake.unlockTime,
             stakePeriodDays: userStake.stakePeriodDays,
             aprInBps: userStake.aprInBps,
-            pendingRewards: _calculateAccruedReward(user, stakeIndex),
+            reservedReward: _calculateAccruedReward(user, stakeIndex),
             autoCompound: userStake.autoCompound,
             active: userStake.active && !userStake.withdrawn,
             canWithdraw: block.timestamp >= userStake.unlockTime && userStake.active && !userStake.withdrawn,

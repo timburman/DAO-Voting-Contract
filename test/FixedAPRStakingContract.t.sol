@@ -61,6 +61,43 @@ contract FixedAPRStakingContractTest is Test {
         vm.stopPrank();
     }
 
+    // Helper Function for testing
+    function _createCompoundPoolWithRewards(address user, uint256 poolAmount, uint8 preferredPeriod) internal {
+        vm.startPrank(user);
+        governanceToken.approve(address(stakingContract), poolAmount * 10);
+        stakingContract.stake(poolAmount * 10, preferredPeriod, true);
+        vm.stopPrank();
+
+        skip(30 days);
+
+        while (stakingContract.getCompoundPoolValue(user) < poolAmount) {
+            vm.prank(user);
+            stakingContract.claimRewards(stakingContract.getStakeCount(user) - 1);
+            skip(5 days);
+        }
+    }
+
+    function _calculateExpectedReward(uint256 amount, uint256 aprInBps, uint256 durationInSeconds)
+        internal
+        pure
+        returns (uint256)
+    {
+        return (amount * aprInBps * durationInSeconds) / (10000 * 365 days);
+    }
+
+    function _createStakeAndSkipTime(address user, uint256 amount, uint8 periodIndex, uint256 skipDays)
+        internal
+        returns (uint256 stakeIndex)
+    {
+        vm.startPrank(user);
+        governanceToken.approve(address(stakingContract), amount);
+        stakingContract.stake(amount, periodIndex, false);
+        vm.stopPrank();
+
+        stakeIndex = stakingContract.getStakeCount(user) - 1;
+        skip(skipDays * 1 days);
+    }
+
     // Basic Functionality Tests
     function testContructorInitialization() public view {
         assertEq(address(stakingContract.governanceToken()), address(governanceToken));
@@ -283,4 +320,6 @@ contract FixedAPRStakingContractTest is Test {
         uint256 totalPoolValue = stakingContract.getCompoundPoolValue(user1);
         assertApproxEqAbs(totalPoolValue, firstReward + secondReward, 1e15);
     }
+
+    function testManualFlushCompoundPool() public {}
 }

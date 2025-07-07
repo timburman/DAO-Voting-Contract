@@ -109,7 +109,6 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         }
     }
 
-
     // -- Admin Functions --
 
     function setCooldownPeriod(uint256 newCooldown) external onlyOwner {

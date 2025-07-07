@@ -109,10 +109,6 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         }
     }
 
-    // -- ASR Integration --
-    function recordVotingActivity(uint256 proposalId, uint256 votingPower) external {
-        require(msg.sender != address(0), "Not Authorized");
-    }
 
     // -- Admin Functions --
 

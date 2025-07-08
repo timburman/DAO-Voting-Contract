@@ -27,7 +27,6 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
     struct UnstakeRequest {
         uint256 amount;
         uint256 requestTime;
-        bool claimed;
     }
 
     mapping(address => UnstakeRequest[]) public unstakeRequests;
@@ -84,19 +83,18 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         emit Staked(msg.sender, amount, totalStaked, _balances[msg.sender]);
     }
 
-    function unStake(uint256 amount) external nonReentrant {
+    function unstake(uint256 amount) external nonReentrant {
         require(amount >= minimumUnstakeAmount, "Amount below minimum");
         require(_balances[msg.sender] >= amount, "Insufficient staked");
-        require(unstakeRequests[msg.sender].length < MAX_UNSTAKE_REQUESTS, "Max unstake requests reached");
+        require(unstakeRequests[msg.sender].length < MAX_UNSTAKE_REQUESTS, "Max unstake requess reached");
 
         _balances[msg.sender] -= amount;
         totalStaked -= amount;
 
-        uint256 claimableAt = emergencyMode ? block.timestamp : block.timestamp + cooldownPeriod;
-
-        unstakeRequests[msg.sender].push(UnstakeRequest({amount: amount, requestTime: block.timestamp, claimed: false}));
+        unstakeRequests[msg.sender].push(UnstakeRequest({amount: amount, requestTime: block.timestamp}));
 
         uint256 requestIndex = unstakeRequests[msg.sender].length - 1;
+        uint256 claimableAt = block.timestamp + cooldownPeriod;
 
         emit UnstakeRequested(msg.sender, amount, block.timestamp, requestIndex, claimableAt);
     }
@@ -105,39 +103,73 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         require(requestIndex < unstakeRequests[msg.sender].length, "Invalid request");
 
         UnstakeRequest storage req = unstakeRequests[msg.sender][requestIndex];
-        require(!req.claimed, "Already Claimed");
 
         if (!emergencyMode) {
             require(block.timestamp >= req.requestTime + cooldownPeriod, "Cooldown not passed");
         }
 
-        req.claimed = true;
-        require(stakingToken.transfer(msg.sender, req.amount), "Transfer failed");
+        uint256 amount = req.amount;
 
-        emit UnstakeClaimed(msg.sender, req.amount, requestIndex);
+        _removeRequestByIndex(msg.sender, requestIndex);
+
+        require(stakingToken.transfer(msg.sender, amount), "Transfer failed");
+
+        emit UnstakeClaimed(msg.sender, amount, requestIndex);
     }
 
     function claimAllReady() external nonReentrant {
-        uint256[] memory claimableIndices = getClaimableRequests(msg.sender);
-        require(claimableIndices.length > 0, "No claimable requests");
+        UnstakeRequest[] storage requests = unstakeRequests[msg.sender];
+        require(requests.length > 0, "No unstake requessts");
 
         uint256 totalAmount = 0;
+        uint256 claimedCount = 0;
 
-        for (uint256 i = 0; i < claimableIndices.length; i++) {
-            uint256 requestIndex = claimableIndices[i];
-            UnstakeRequest storage req = unstakeRequests[msg.sender][requestIndex];
+        for (int256 i = int256(requests.length) - 1; i >= 0; i--) {
+            UnstakeRequest storage req = requests[uint256(i)];
 
-            if (!req.claimed) {
-                req.claimed = true;
+            bool canClaim = emergencyMode || (block.timestamp >= req.requestTime + cooldownPeriod);
+
+            if (canClaim) {
                 totalAmount += req.amount;
+                claimedCount++;
+
+                _removeRequestByIndex(msg.sender, uint256(i));
             }
         }
 
-        require(totalAmount > 0, "No amount to claim");
+        require(totalAmount > 0, "No Claimable requests");
         require(stakingToken.transfer(msg.sender, totalAmount), "Transfer failed");
 
-        emit BatchUnstakeClaimed(msg.sender, totalAmount, claimableIndices);
+        emit BatchUnstakeClaimed(msg.sender, totalAmount, claimedCount);
     }
+
+    // -- Internal Helper Functions --
+    function _removeRequestByIndex(address user, uint256 index) internal {
+        UnstakeRequest[] storage requests = unstakeRequests[user];
+        require(index < requests.length, "Invalid index");
+
+        requests[index] = requests[requests.length - 1];
+        requests.pop();
+    }
+
+    //  -- View Functions --
+    function getStakedAmount(address user) external view returns (uint256) {
+        return _balances[user];
+    }
+
+    function getTotalStaked() external view returns (uint256) {
+        return totalStaked;
+    }
+
+    function getVotingPower(address user) external view returns (uint256) {
+        return _balances[user];
+    }
+
+    function getUnstakeRequests(address user, uint256 offset, uint256 limit)
+        external
+        view
+        returns (uint256[] memory amounts, uint256[] memory requestTimes, bool[] memory claimed)
+    {}
 
     // -- Interface Support --
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {

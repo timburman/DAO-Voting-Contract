@@ -86,7 +86,7 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
     function unstake(uint256 amount) external nonReentrant {
         require(amount >= minimumUnstakeAmount, "Amount below minimum");
         require(_balances[msg.sender] >= amount, "Insufficient staked");
-        require(unstakeRequests[msg.sender].length < MAX_UNSTAKE_REQUESTS, "Max unstake requess reached");
+        require(unstakeRequests[msg.sender].length < MAX_UNSTAKE_REQUESTS, "Max unstake requests reached");
 
         _balances[msg.sender] -= amount;
         totalStaked -= amount;
@@ -119,7 +119,7 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
 
     function claimAllReady() external nonReentrant {
         UnstakeRequest[] storage requests = unstakeRequests[msg.sender];
-        require(requests.length > 0, "No unstake requessts");
+        require(requests.length > 0, "No unstake requests");
 
         uint256 totalAmount = 0;
         uint256 claimedCount = 0;
@@ -165,11 +165,118 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         return _balances[user];
     }
 
-    function getUnstakeRequests(address user, uint256 offset, uint256 limit)
+    function getUnstakeRequests(address user)
         external
         view
-        returns (uint256[] memory amounts, uint256[] memory requestTimes, bool[] memory claimed)
-    {}
+        returns (uint256[] memory amounts, uint256[] memory requestTimes, uint256[] memory claimableTimes)
+    {
+        UnstakeRequest[] storage requests = unstakeRequests[user];
+        uint256 length = requests.length;
+
+        amounts = new uint256[](length);
+        requestTimes = new uint256[](length);
+        claimableTimes = new uint256[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            amounts[i] = requests[i].amount;
+            requestTimes[i] = requests[i].requestTime;
+            claimableTimes[i] = requests[i].requestTime + cooldownPeriod;
+        }
+    }
+
+    function getUnstakeRequestPaginated(address user, uint256 offset, uint256 limit)
+        external
+        view
+        returns (uint256[] memory amounts, uint256[] memory requestTimes, uint256[] memory claimableTimes)
+    {
+        UnstakeRequest[] memory requests = unstakeRequests[user];
+        uint256 totalRequests = requests.length;
+
+        if (offset >= totalRequests) {
+            return (new uint256[](0), new uint256[](0), new uint256[](0));
+        }
+
+        uint256 end = offset + limit;
+        if (end > totalRequests) {
+            end = totalRequests;
+        }
+
+        uint256 length = end - offset;
+        amounts = new uint256[](length);
+        requestTimes = new uint256[](length);
+        claimableTimes = new uint256[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            uint256 requestIndex = offset + i;
+            amounts[i] = requests[requestIndex].amount;
+            requestTimes[i] = requests[requestIndex].requestTime;
+            claimableTimes[i] = requests[requestIndex].requestTime + cooldownPeriod;
+        }
+    }
+
+    function getPendingUnstakeCount(address user) external view returns (uint256) {
+        return unstakeRequests[user].length;
+    }
+
+    function getTotalPendingUnstake(address user) external view returns (uint256) {
+        UnstakeRequest[] memory requests = unstakeRequests[user];
+        uint256 total = 0;
+
+        for (uint256 i = 0; i < requests.length; i++) {
+            total += requests[i].amount;
+        }
+
+        return total;
+    }
+
+    function getClaimableRequests(address user)
+        external
+        view
+        returns (uint256[] memory requestIndices, uint256[] memory amounts)
+    {
+        UnstakeRequest[] storage requests = unstakeRequests[user];
+        uint256 claimableCount = 0;
+
+        for (uint256 i = 0; i < requests.length; i++) {
+            if (emergencyMode || (block.timestamp >= requests[i].requestTime + cooldownPeriod)) {
+                claimableCount++;
+            }
+        }
+
+        requestIndices = new uint256[](claimableCount);
+        amounts = new uint256[](claimableCount);
+        uint256 currentIndex = 0;
+
+        for (uint256 i = 0; i < requests.length; i++) {
+            if (emergencyMode || (block.timestamp >= requests[i].requestTime + cooldownPeriod)) {
+                requestIndices[currentIndex] = i;
+                amounts[currentIndex] = requests[i].amount;
+                currentIndex++;
+            }
+        }
+    }
+
+    function getNextClaimableTime(address user) external view returns (uint256) {
+        if (emergencyMode) return block.timestamp;
+
+        UnstakeRequest[] storage requests = unstakeRequests[user];
+        uint256 earliestTime = type(uint256).max;
+
+        for (uint256 i = 0; i < requests.length; i++) {
+            uint256 claimableAt = requests[i].requestTime + cooldownPeriod;
+            if (claimableAt < earliestTime) {
+                earliestTime = claimableAt;
+            }
+        }
+
+        return earliestTime == type(uint256).max ? 0 : earliestTime;
+    }
+
+    function getTotalUnstakeRequests(address user) external view returns (uint256) {
+        return unstakeRequests[user].length;
+    }
+
+    // -- Owner Functions --
 
     // -- Interface Support --
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {

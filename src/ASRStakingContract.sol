@@ -64,8 +64,8 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         stakingToken = IERC20(_stakingToken);
         cooldownPeriod = _cooldownPeriod;
         owner = _owner;
-        minimumStakeAmount = 1;
-        minimumUnstakeAmount = 1;
+        minimumStakeAmount = 1 ether;
+        minimumUnstakeAmount = 1 ether;
         emergencyMode = false;
     }
 

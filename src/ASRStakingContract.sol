@@ -72,7 +72,7 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
     // -- Core Staking Logic --
     function stake(uint256 amount) external nonReentrant {
         require(amount >= minimumStakeAmount, "Amount below minimum");
-        require(stakingToken.balanceOf(msg.sender) >= amount, "Insufficient token balalnce");
+        require(stakingToken.balanceOf(msg.sender) >= amount, "Insufficient token balance");
         require(stakingToken.allowance(msg.sender, address(this)) >= amount, "Insufficient allowance");
 
         require(stakingToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");

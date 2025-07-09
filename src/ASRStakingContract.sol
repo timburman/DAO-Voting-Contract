@@ -278,6 +278,37 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
 
     // -- Owner Functions --
 
+    function setCooldownPeriod(uint256 newCooldown) external onlyOwner {
+        require(newCooldown >= MIN_COOLDOWN && newCooldown <= MAX_COOLDOWN, "Cooldown out of range");
+        cooldownPeriod = newCooldown;
+        emit CooldownPeriodUpdated(newCooldown);
+    }
+
+    function setMinimumAmounts(uint256 minStake, uint256 minUnstake) external onlyOwner {
+        require(minStake > 0 && minUnstake > 0, "Amounts must be greater than zero");
+        minimumStakeAmount = minStake;
+        minimumUnstakeAmount = minUnstake;
+        emit MinimumAmountUpdated(minStake, minUnstake);
+    }
+
+    function setEmergencyMode(bool enabled) external onlyOwner {
+        emergencyMode = enabled;
+        emit EmergencyModeUpdated(enabled);
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "Invalid new owner");
+        pendingOwner = newOwner;
+    }
+
+    function acceptOwnership() external {
+        require(msg.sender == pendingOwner, "Not pending owner");
+        owner = pendingOwner;
+        pendingOwner = address(0);
+
+        emit OwnershipTransferred(owner, pendingOwner);
+    }
+
     // -- Interface Support --
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
         return interfaceId == type(IERC165).interfaceId;

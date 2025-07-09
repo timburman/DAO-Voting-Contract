@@ -70,4 +70,154 @@ contract ASRStakingContractTest is Test {
         vm.expectRevert("Invalid Token");
         newImpl.initialize(address(0), COOLDOWN_PERIOD, owner);
     }
+
+    function testInitializeInvalidOwner() public {
+        ASRStakingContract newImpl = new ASRStakingContract();
+
+        vm.expectRevert("Invalid owner");
+        newImpl.initialize(address(token), COOLDOWN_PERIOD, address(0));
+    }
+
+    function testInitializeInvallidCooldown() public {
+        ASRStakingContract newImpl = new ASRStakingContract();
+
+        vm.expectRevert("Cooldown out of range");
+        newImpl.initialize(address(token), 6 days, owner);
+
+        vm.expectRevert("Cooldown out of range");
+        newImpl.initialize(address(token), 31 days, owner);
+    }
+
+    // -- Staking Tests --
+    function testStakeSuccess() public {
+        uint256 stakeAmount = 1000 ether;
+
+        vm.expectEmit(true, true, true, true);
+        emit Staked(user1, stakeAmount, stakeAmount, stakeAmount);
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        assertEq(staking.getStakedAmount(user1), stakeAmount);
+        assertEq(staking.getTotalStaked(), stakeAmount);
+        assertEq(staking.getVotingPower(user1), stakeAmount);
+        assertEq(token.balanceOf(user1), 9000 ether);
+    }
+
+    function testStakeMultipleUsers() public {
+        uint256 stakeAmount1 = 1000 ether;
+        uint256 stakeAmount2 = 2000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount1);
+
+        vm.prank(user2);
+        staking.stake(stakeAmount2);
+
+        assertEq(staking.getStakedAmount(user1), stakeAmount1);
+        assertEq(staking.getStakedAmount(user2), stakeAmount2);
+        assertEq(staking.getTotalStaked(), stakeAmount1 + stakeAmount2);
+    }
+
+    function testStakeBelowMinimum() public {
+        vm.prank(user1);
+
+        vm.expectRevert("Amount below minimum");
+        staking.stake(0.5 ether);
+    }
+
+    function testStakeInsufficientBalance() public {
+        uint256 stakeAmount = 100000 ether; // More than user1's balance
+
+        vm.prank(user1);
+        vm.expectRevert("Insufficient token balance");
+        staking.stake(stakeAmount);
+    }
+
+    function testStakeInsufficientAllowance() public {
+        address newUser = address(0x707);
+
+        vm.prank(owner);
+        token.transfer(newUser, 1000 ether);
+
+        vm.prank(newUser);
+        vm.expectRevert("Insufficient allowance");
+        staking.stake(1000 ether);
+    }
+
+    // -- Unstake Tests --
+
+    function testUnstakeSuccess() public {
+        uint256 stakeAmount = 1000 ether;
+        uint256 unstakeAmount = 500 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.expectEmit(true, true, true, true);
+        emit UnstakeRequested(user1, unstakeAmount, block.timestamp, 0, block.timestamp + COOLDOWN_PERIOD);
+
+        vm.prank(user1);
+        staking.unstake(unstakeAmount);
+
+        assertEq(staking.getStakedAmount(user1), stakeAmount - unstakeAmount);
+        assertEq(staking.getTotalStaked(), stakeAmount - unstakeAmount);
+        assertEq(staking.getPendingUnstakeCount(user1), 1);
+        assertEq(staking.getTotalPendingUnstake(user1), unstakeAmount);
+    }
+
+    function testUnstakeMultipleRequests() public {
+        uint256 stakeAmount = 3000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(500 ether);
+
+        vm.prank(user1);
+        staking.unstake(700 ether);
+
+        vm.prank(user1);
+        staking.unstake(800 ether);
+
+        assertEq(staking.getPendingUnstakeCount(user1), 3);
+        assertEq(staking.getTotalPendingUnstake(user1), 2000 ether);
+        assertEq(staking.getStakedAmount(user1), 1000 ether);
+    }
+
+    function testUnstakeMaxRequestsReached() public {
+        uint256 stakeAmount = 3000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(500 ether);
+        vm.prank(user1);
+        staking.unstake(500 ether);
+        vm.prank(user1);
+        staking.unstake(500 ether);
+
+        vm.prank(user1);
+        vm.expectRevert("Max unstake requests reached");
+        staking.unstake(500 ether);
+    }
+
+    function testUnstakeInsufficientStaked() public {
+        vm.prank(user1);
+        vm.expectRevert("Insufficient staked");
+        staking.unstake(100 ether);
+    }
+
+    function unstakeBelowMinimum() public {
+        vm.prank(user1);
+        staking.stake(2 ether);
+
+        vm.prank(user1);
+        vm.expectRevert("Amount below minimum");
+        staking.unstake(0.5 ether);
+    }
+
+    // -- Claim Tests --
 }

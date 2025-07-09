@@ -220,4 +220,112 @@ contract ASRStakingContractTest is Test {
     }
 
     // -- Claim Tests --
+
+    function testClaimUnstakeBeforeCooldownFails() public {
+        uint256 stakeAmount = 1000 ether;
+        uint256 unstakeAmount = 500 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(unstakeAmount);
+
+        vm.prank(user1);
+        vm.expectRevert("Cooldown not passed");
+        staking.claimUnstake(0);
+    }
+
+    function testClaimUnstakeAfterCooldownSuccess() public {
+        uint256 stakeAmount = 1000 ether;
+        uint256 unstakeAmount = 500 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(unstakeAmount);
+
+        skip(COOLDOWN_PERIOD + 1 seconds);
+
+        uint256 balanceBefore = token.balanceOf(user1);
+
+        vm.expectEmit(true, true, true, true);
+        emit UnstakeClaimed(user1, unstakeAmount, 0);
+
+        vm.prank(user1);
+        staking.claimUnstake(0);
+
+        assertEq(token.balanceOf(user1), balanceBefore + unstakeAmount);
+        assertEq(staking.getPendingUnstakeCount(user1), 0);
+        assertEq(staking.getTotalPendingUnstake(user1), 0);
+    }
+
+    function testClaimUnstakeInvalidRequest() public {
+        vm.prank(user1);
+        vm.expectRevert("Invalid request");
+        staking.claimUnstake(1);
+    }
+
+    function testclaimAllReadySuccess() public {
+        uint stakeAmount = 3000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(1000 ether);
+
+        vm.prank(user1);
+        staking.unstake(1000 ether);
+
+        vm.prank(user1);
+        staking.unstake(1000 ether);
+
+        skip(COOLDOWN_PERIOD + 1 seconds);
+
+        uint256 balanceBefore = token.balanceOf(user1);
+
+        vm.expectEmit(true, true, true, true);
+        emit BatchUnstakeClaimed(user1, 3000 ether, 3);
+
+        vm.prank(user1);
+        staking.claimAllReady();
+
+        assertEq(token.balanceOf(user1), balanceBefore + 3000 ether);
+        assertEq(staking.getPendingUnstakeCount(user1), 0);
+    }
+
+    function testClaimAllReadyPartial() public {
+        uint stakeAmount = 3000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(1000 ether);
+
+        skip(4 days);
+
+        vm.prank(user1);
+        staking.unstake(500 ether);
+
+        skip(4 days);
+
+        uint balanceBefore = token.balanceOf(user1);
+
+        vm.prank(user1);
+        staking.claimAllReady();
+
+        assertEq(token.balanceOf(user1), balanceBefore + 1000 ether);
+        assertEq(staking.getPendingUnstakeCount(user1), 1);
+        assertEq(staking.getTotalPendingUnstake(user1), 500 ether);
+    }
+
+    function testClaimAllReadyNoRequests() public {
+        vm.prank(user1);
+        vm.expectRevert("No unstake requests");
+        staking.claimAllReady();
+    }
+
 }

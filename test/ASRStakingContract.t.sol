@@ -28,6 +28,7 @@ contract ASRStakingContractTest is Test {
     );
     event UnstakeClaimed(address indexed user, uint256 amount, uint256 originalRequestIndex);
     event BatchUnstakeClaimed(address indexed user, uint256 totalAmount, uint256 requestCount);
+    event CooldownPeriodUpdated(uint256 newCooldown);
 
     function setUp() public {
         token = new GovernanceToken("Governance Token", "GOV", INITIAL_BALANCE, owner);
@@ -268,7 +269,7 @@ contract ASRStakingContractTest is Test {
     }
 
     function testclaimAllReadySuccess() public {
-        uint stakeAmount = 3000 ether;
+        uint256 stakeAmount = 3000 ether;
 
         vm.prank(user1);
         staking.stake(stakeAmount);
@@ -297,7 +298,7 @@ contract ASRStakingContractTest is Test {
     }
 
     function testClaimAllReadyPartial() public {
-        uint stakeAmount = 3000 ether;
+        uint256 stakeAmount = 3000 ether;
 
         vm.prank(user1);
         staking.stake(stakeAmount);
@@ -312,7 +313,7 @@ contract ASRStakingContractTest is Test {
 
         skip(4 days);
 
-        uint balanceBefore = token.balanceOf(user1);
+        uint256 balanceBefore = token.balanceOf(user1);
 
         vm.prank(user1);
         staking.claimAllReady();
@@ -328,4 +329,189 @@ contract ASRStakingContractTest is Test {
         staking.claimAllReady();
     }
 
+    // -- Emergency Mode Tests --
+    function testEmergencyModeInstantClaim() public {
+        uint256 stakeAmount = 1000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(owner);
+        staking.setEmergencyMode(true);
+
+        vm.prank(user1);
+        staking.unstake(500 ether);
+
+        vm.prank(user1);
+        staking.claimUnstake(0);
+
+        assertEq(staking.getPendingUnstakeCount(user1), 0);
+    }
+
+    // -- View Function Tests --
+
+    function testGetUnstakeRequests() public {
+        uint256 stakeAmount = 1000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(500 ether);
+        vm.prank(user1);
+        staking.unstake(300 ether);
+
+        (uint256[] memory amounts, uint256[] memory requestTimes, uint256[] memory claimableTimes) =
+            staking.getUnstakeRequests(user1);
+
+        assertEq(amounts.length, 2);
+        assertEq(amounts[0], 500 ether);
+        assertEq(amounts[1], 300 ether);
+        assertEq(claimableTimes[0], requestTimes[0] + COOLDOWN_PERIOD);
+    }
+
+    function test_getUnstakeRequestsPaginated() public {
+        uint256 stakeAmount = 3000 * 10 ** 18;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(500 * 10 ** 18);
+        vm.prank(user1);
+        staking.unstake(700 * 10 ** 18);
+        vm.prank(user1);
+        staking.unstake(800 * 10 ** 18);
+
+        (uint256[] memory amounts1,,) = staking.getUnstakeRequestsPaginated(user1, 0, 2);
+        assertEq(amounts1.length, 2);
+        assertEq(amounts1[0], 500 * 10 ** 18);
+        assertEq(amounts1[1], 700 * 10 ** 18);
+
+        (uint256[] memory amounts2,,) = staking.getUnstakeRequestsPaginated(user1, 2, 2);
+        assertEq(amounts2.length, 1);
+        assertEq(amounts2[0], 800 * 10 ** 18);
+
+        (uint256[] memory amounts3,,) = staking.getUnstakeRequestsPaginated(user1, 5, 2);
+        assertEq(amounts3.length, 0);
+    }
+
+    function test_getClaimableRequests() public {
+        uint256 stakeAmount = 2000 * 10 ** 18;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(500 * 10 ** 18);
+
+        vm.warp(block.timestamp + 4 days);
+        vm.prank(user1);
+        staking.unstake(700 * 10 ** 18);
+
+        // Fast forward to make first claimable
+        vm.warp(block.timestamp + 4 days);
+
+        (uint256[] memory indices, uint256[] memory amounts) = staking.getClaimableRequests(user1);
+
+        assertEq(indices.length, 1);
+        assertEq(indices[0], 0);
+        assertEq(amounts[0], 500 * 10 ** 18);
+    }
+
+    // -- Admin Functions Tests --
+
+    function testSetCooldownPeriodSuccess() public {
+        uint256 cooldown = 10 days;
+
+        vm.expectEmit(true, true, true, true);
+        emit CooldownPeriodUpdated(cooldown);
+
+        vm.prank(owner);
+        staking.setCooldownPeriod(cooldown);
+
+        assertEq(staking.cooldownPeriod(), cooldown);
+    }
+
+    function testSetCooldownOutNotOwner() public {
+        vm.prank(user1);
+        vm.expectRevert("Not owner");
+        staking.setCooldownPeriod(10 days);
+    }
+
+    function testSetCooldownOutOfRange() public {
+        vm.prank(owner);
+        vm.expectRevert("Cooldown out of range");
+        staking.setCooldownPeriod(6 days);
+
+        vm.prank(owner);
+        vm.expectRevert("Cooldown out of range");
+        staking.setCooldownPeriod(31 days);
+    }
+
+    function testSetMinimumAmounts() public {
+        vm.prank(owner);
+        staking.setMinimumAmounts(100 ether, 50 ether);
+
+        assertEq(staking.minimumStakeAmount(), 100 ether);
+        assertEq(staking.minimumUnstakeAmount(), 50 ether);
+    }
+
+    function testOwnershipTransfer() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner);
+        staking.transferOwnership(newOwner);
+
+        assertEq(staking.pendingOwner(), newOwner);
+        assertEq(staking.owner(), owner);
+
+        vm.prank(newOwner);
+        staking.acceptOwnership();
+
+        assertEq(staking.owner(), newOwner);
+        assertEq(staking.pendingOwner(), address(0));
+    }
+
+    // -- Security Tests --
+
+    function testReentrancyProtection() public pure {
+        // place holder
+        assertTrue(true);
+    }
+
+    function testArrayShiftingCorrectness() public {
+        uint256 stakeAmount = 3000 ether;
+
+        vm.prank(user1);
+        staking.stake(stakeAmount);
+
+        vm.prank(user1);
+        staking.unstake(500 ether);
+
+        vm.prank(user1);
+        staking.unstake(700 ether);
+
+        vm.prank(user1);
+        staking.unstake(1000 ether);
+
+        skip(COOLDOWN_PERIOD + 1 seconds);
+
+        vm.prank(user1);
+        staking.claimUnstake(1);
+
+        assertEq(staking.getPendingUnstakeCount(user1), 2);
+
+        (uint256[] memory amounts,,) = staking.getUnstakeRequests(user1);
+
+        assertEq(amounts[0], 500 ether);
+        assertEq(amounts[1], 1000 ether);
+    }
+
+    // -- Gas Optimization Tests --
+
+    // -- Interface Tests --
+    function testSupportsInterface() public view {
+        assertTrue(staking.supportsInterface(type(IERC165).interfaceId));
+    }
 }

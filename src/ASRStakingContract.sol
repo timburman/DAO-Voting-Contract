@@ -184,7 +184,7 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         }
     }
 
-    function getUnstakeRequestPaginated(address user, uint256 offset, uint256 limit)
+    function getUnstakeRequestsPaginated(address user, uint256 offset, uint256 limit)
         external
         view
         returns (uint256[] memory amounts, uint256[] memory requestTimes, uint256[] memory claimableTimes)

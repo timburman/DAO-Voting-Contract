@@ -6,7 +6,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-
 /**
  * @title ASR Staking Contract
  * @dev This contract allows users to stake ASR tokens, request unstaking with a cooldown period,

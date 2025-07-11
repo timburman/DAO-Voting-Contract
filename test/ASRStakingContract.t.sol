@@ -405,12 +405,12 @@ contract ASRStakingContractTest is Test {
         vm.prank(user1);
         staking.unstake(500 * 10 ** 18);
 
-        vm.warp(block.timestamp + 4 days);
+        skip(4 days);
         vm.prank(user1);
         staking.unstake(700 * 10 ** 18);
 
         // Fast forward to make first claimable
-        vm.warp(block.timestamp + 4 days);
+        skip(4 days);
 
         (uint256[] memory indices, uint256[] memory amounts) = staking.getClaimableRequests(user1);
 

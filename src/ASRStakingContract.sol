@@ -6,6 +6,15 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+
+/**
+ * @title ASR Staking Contract
+ * @dev This contract allows users to stake ASR tokens, request unstaking with a cooldown period,
+ * and claim their staked tokens after the cooldown. It also supports emergency mode for immediate claims.
+ * The contract includes features for minimum stake/unstake amounts, cooldown period management,
+ * and ownership transfer.
+ * @notice Integrated with OpenZeppelin's ReentrancyGuard for security against reentrancy attacks.
+ */
 contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC165 {
     // -- Stake Variables --
     IERC20 public stakingToken;

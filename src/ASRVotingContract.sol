@@ -29,7 +29,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     enum ProposalCategory {
         PARAMETER_CHANGE,
         TREASURY_ACTION,
-        EMERYGENCY_ACTION,
+        EMERGENCY_ACTION,
         GOVERNANCE_CHANGE
     }
 
@@ -163,6 +163,24 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         owner = _owner;
 
         _setDefaultRequirements();
+    }
+
+    function _setDefaultRequirements() internal {
+        // Parameter change - simple maority
+        categoryRequirements[ProposalCategory.PARAMETER_CHANGE] =
+            ProposalRequirements({quorumPercentage: 10, approvalThreshold: 51, executionDelay: 7 days});
+
+        // Treasury action - higher threshold
+        categoryRequirements[ProposalCategory.TREASURY_ACTION] =
+            ProposalRequirements({quorumPercentage: 15, approvalThreshold: 60, executionDelay: 14 days});
+
+        // Emergency action - high threshold, fast execution
+        categoryRequirements[ProposalCategory.EMERGENCY_ACTION] =
+            ProposalRequirements({quorumPercentage: 20, approvalThreshold: 75, executionDelay: 1 days});
+
+        // Governance changes - supermajority
+        categoryRequirements[ProposalCategory.GOVERNANCE_CHANGE] =
+            ProposalRequirements({quorumPercentage: 25, approvalThreshold: 80, executionDelay: 21 days});
     }
 
     // -- Interface Support --

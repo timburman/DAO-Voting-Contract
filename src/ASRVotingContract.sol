@@ -88,7 +88,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     // Proposal Storage
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(uint256 => uint256)) public proposalChoiceVotes; // proposalId => (choiceIndex => votes)
-    mapping(uint256 => mapping(address => bool)) public hasVotes; // proposalId => (user => hasVoted)
+    mapping(uint256 => mapping(address => bool)) public hasVoted; // proposalId => (user => hasVoted)
     mapping(uint256 => mapping(address => uint256)) public userVotingPower; // proposalId => (user => votingPower)
     mapping(uint256 => mapping(address => uint256)) public userVoteChoice; // proposalId => (user => choiceIndex)
 
@@ -182,6 +182,93 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         categoryRequirements[ProposalCategory.GOVERNANCE_CHANGE] =
             ProposalRequirements({quorumPercentage: 25, approvalThreshold: 80, executionDelay: 21 days});
     }
+
+    // -- Proposal Creation --
+
+    function createProposal(
+        string memory title,
+        string memory description,
+        ProposalCategory category,
+        ProposalType proposalType,
+        address[] memory targets,
+        bytes[] memory calldatas,
+        string[] memory choices
+    ) external onlyAuthorizedProposer nonReentrant returns (uint256) {
+        require(bytes(title).length > 0, "Empty title");
+        require(bytes(description).length > 0, "Empty description");
+        require(targets.length == calldatas.length, "Array length mismatch");
+
+        if (proposalType == ProposalType.BINARY) {
+            require(choices.length == 0, "Binary proposals cannot have choices");
+        } else {
+            require(choices.length >= 2, "Need at least 2 choices for multi-choice");
+            require(choices.length <= 10, "Too many choices (max 10)");
+        }
+
+        proposalCounter++;
+        uint256 proposalId = proposalCounter;
+
+        uint256 snapshotBlock = block.number;
+        uint256 totalVotingPower = stakingContract.getTotalStaked();
+        require(totalVotingPower > 0, "No staked tokens available for voting");
+
+        uint256 startTime = block.timestamp;
+        uint256 endTime = startTime + VOTING_PERIOD;
+        uint256 executionDelay = categoryRequirements[category].executionDelay;
+        uint256 executionTime = endTime + executionDelay;
+        uint256 gracePeriodEnd = executionTime + GRACE_PERIOD;
+
+        // Proposal Creation
+        Proposal storage proposal = proposals[proposalId];
+        proposal.id = proposalId;
+        proposal.title = title;
+        proposal.description = description;
+        proposal.category = category;
+        proposal.proposalType = proposalType;
+        proposal.targets = targets;
+        proposal.calldatas = calldatas;
+        proposal.startTime = startTime;
+        proposal.endTime = endTime;
+        proposal.executionTime = executionTime;
+        proposal.gracePeriodEnd = gracePeriodEnd;
+        proposal.snapShotBlock = snapshotBlock;
+        proposal.totalVotingPower = totalVotingPower;
+        proposal.proposer = msg.sender;
+
+        if (proposalType == ProposalType.BINARY) {
+            proposal.choices.push("For");
+            proposal.choices.push("Against");
+            proposal.choices.push("Abstain");
+        } else {
+            for (uint256 i = 0; i < choices.length; i++) {
+                require(bytes(choices[i]).length > 0, "Empty choice");
+                proposal.choices.push(choices[i]);
+            }
+        }
+
+        emit ProposalCreated(proposalId, msg.sender, title, category, proposalType, startTime, endTime, snapshotBlock);
+
+        return proposalId;
+    }
+
+    // -- Voting --
+    function vote(
+        uint proposalId,
+        uint choiceIndex,
+        string memory reason
+    ) external validProposal(proposalId) nonReentrant {
+        Proposal storage proposal = proposals[proposalId];
+
+        require(block.timestamp >= proposal.startTime, "Voting has not started yet");
+        require(block.timestamp < proposal.endTime, "Voting has ended");
+        require(!proposal.cancelled, "Proposal cancelled");
+
+        require(choiceIndex < proposal.choices.length, "Invalid choice index");
+        require(!hasVoted[proposalId][msg.sender], "Already voted on this proposal");
+
+        uint votingPower = stakingContract.getVotingPower(msg.sender);
+    }
+
 
     // -- Interface Support --
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {

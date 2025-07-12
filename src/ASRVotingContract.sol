@@ -252,11 +252,11 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     }
 
     // -- Voting --
-    function vote(
-        uint proposalId,
-        uint choiceIndex,
-        string memory reason
-    ) external validProposal(proposalId) nonReentrant {
+    function vote(uint256 proposalId, uint256 choiceIndex, string memory reason)
+        external
+        validProposal(proposalId)
+        nonReentrant
+    {
         Proposal storage proposal = proposals[proposalId];
 
         require(block.timestamp >= proposal.startTime, "Voting has not started yet");
@@ -266,9 +266,8 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         require(choiceIndex < proposal.choices.length, "Invalid choice index");
         require(!hasVoted[proposalId][msg.sender], "Already voted on this proposal");
 
-        uint votingPower = stakingContract.getVotingPower(msg.sender);
+        uint256 votingPower = stakingContract.getVotingPower(msg.sender);
     }
-
 
     // -- Interface Support --
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {

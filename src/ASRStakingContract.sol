@@ -31,13 +31,42 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
     mapping(address => uint256) private _balances;
     uint256 public totalStaked;
 
+    // Core proposal state
+    bool public isProposalActive;
+    uint256 public currentProposalPeriod;
+    uint256 public activeProposalCount;
+    uint256 public totalProposalCount;
+    uint256 public constant MAX_ACTIVE_PROPOSALS = 3;
+
     // Unstake Requests
     struct UnstakeRequest {
         uint256 amount;
         uint256 requestTime;
     }
 
+    // Proposal Details
+    struct ProposalDetails {
+        bool active;
+        uint32 period;
+        uint224 reserved;
+    }
+
+    mapping(uint256 => ProposalDetails) public proposalDetails;
+
     mapping(address => UnstakeRequest[]) public unstakeRequests;
+
+    // Proposal-Specific snapshot storage
+    mapping(address => mapping(uint256 => uint256)) public preProposalBalance; // user => proposalId => balance
+    mapping(address => mapping(uint256 => bool)) public userSnapshotTaken; // user => proposalId => snapshotted
+
+    // Period management
+    mapping(uint256 => uint256) public proposalPeriodStartTime; // period => startTime
+    mapping(uint256 => uint256[]) public proposalPeriodProposals; // period => proposalIds[]
+
+    // Access control
+    address public votingContract;
+    mapping(address => bool) public authorizedAdmins;
+    uint256 public adminCount;
 
     // -- Events --
     event Staked(address indexed user, uint256 amount, uint256 newTotalStaked, uint256 newUserBalance);
@@ -55,9 +84,29 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
     event EmergencyModeUpdated(bool enabled);
     event OwnershipTransferred(address indexed previosOwner, address indexed newOwner);
 
+    // Selective Snapshot events
+    event ProposalPeriodStarted(uint256 indexed proposalPeriod);
+    event ProposalPeriodEnded(uint256 indexed proposalPeriod);
+    event ProposalCreated(uint256 indexed proposalId, uint256 indexed period);
+    event ProposalEnded(uint256 indexed proposalId);
+    event UserSnapshottedForProposal(address indexed user, uint256 balance, uint256 indexed proposalId);
+    event VotingContractUpdated(address indexed newVotingContract);
+    event AdminAdded(address indexed newAdmin);
+    event AdminRemoved(address indexed removedAdmin);
+
     // -- Mofifier --
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    modifier onlyVotingContract() {
+        require(msg.sender == votingContract, "Only voting contract");
+        _;
+    }
+
+    modifier onlyAuthorizedAdmin() {
+        require(authorizedAdmins[msg.sender] || msg.sender == owner, "Not authorized");
         _;
     }
 
@@ -75,6 +124,13 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         minimumStakeAmount = 1 ether;
         minimumUnstakeAmount = 1 ether;
         emergencyMode = false;
+
+        // votingContract will be set later by owner
+        isProposalActive = false;
+        currentProposalPeriod = 0;
+        activeProposalCount = 0;
+        totalProposalCount = 0;
+        adminCount = 0;
     }
 
     // -- Core Staking Logic --
@@ -82,6 +138,21 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         require(amount >= minimumStakeAmount, "Amount below minimum");
         require(stakingToken.balanceOf(msg.sender) >= amount, "Insufficient token balance");
         require(stakingToken.allowance(msg.sender, address(this)) >= amount, "Insufficient allowance");
+
+        if (isProposalActive) {
+            uint256[] memory activeProposals = getActiveProposalIds();
+
+            for (uint256 i = 0; i < activeProposals.length; i++) {
+                uint256 proposalId = activeProposals[i];
+
+                if (!userSnapshotTaken[msg.sender][proposalId]) {
+                    preProposalBalance[msg.sender][proposalId] = _balances[msg.sender];
+                    userSnapshotTaken[msg.sender][proposalId] = true;
+
+                    emit UserSnapshottedForProposal(msg.sender, _balances[msg.sender], proposalId);
+                }
+            }
+        }
 
         require(stakingToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
 
@@ -284,6 +355,31 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         return unstakeRequests[user].length;
     }
 
+    function getActiveProposalIds() public view returns (uint256[] memory activeProposals) {
+        if (!isProposalActive) {
+            return new uint256[](0);
+        }
+
+        uint256[] memory periodProposals = proposalPeriodProposals[currentProposalPeriod];
+        uint256 activeCount = 0;
+
+        for (uint256 i = 0; i < periodProposals.length; i++) {
+            if (proposalDetails[periodProposals[i]].active) {
+                activeCount++;
+            }
+        }
+
+        activeProposals = new uint256[](activeCount);
+        uint256 index = 0;
+
+        for (uint256 i = 0; i < periodProposals.length; i++) {
+            if (proposalDetails[periodProposals[i]].active) {
+                activeProposals[index] = periodProposals[i];
+                index++;
+            }
+        }
+    }
+
     // -- Owner Functions --
 
     function setCooldownPeriod(uint256 newCooldown) external onlyOwner {
@@ -315,6 +411,55 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         pendingOwner = address(0);
 
         emit OwnershipTransferred(owner, pendingOwner);
+    }
+
+    function setVotingContract(address _votingContract) external onlyOwner {
+        require(_votingContract != address(0), "Invalid voting contract");
+        votingContract = _votingContract;
+        emit VotingContractUpdated(_votingContract);
+    }
+
+    function createNewProposal(uint256 proposalId) external onlyVotingContract returns (uint256 period) {
+        require(proposalId > 0, "Invalid proposal ID");
+        require(!proposalDetails[proposalId].active, "Proposal already active");
+        require(activeProposalCount < MAX_ACTIVE_PROPOSALS, "Too many active proposals");
+
+        totalProposalCount++;
+
+        if (!isProposalActive) {
+            currentProposalPeriod++;
+            isProposalActive = true;
+            proposalPeriodStartTime[currentProposalPeriod] = block.timestamp;
+            activeProposalCount = 1;
+
+            emit ProposalPeriodStarted(currentProposalPeriod);
+        } else {
+            activeProposalCount++;
+        }
+
+        proposalDetails[proposalId] =
+            ProposalDetails({active: true, period: uint32(currentProposalPeriod), reserved: 0});
+
+        proposalPeriodProposals[currentProposalPeriod].push(proposalId);
+
+        emit ProposalCreated(proposalId, currentProposalPeriod);
+
+        return currentProposalPeriod;
+    }
+
+    function endProposal(uint256 proposalId) external onlyVotingContract {
+        require(proposalDetails[proposalId].active, "Proposal not active");
+        require(activeProposalCount > 0, "No active proposals");
+
+        proposalDetails[proposalId].active = false;
+        activeProposalCount--;
+
+        if (activeProposalCount == 0) {
+            isProposalActive = false;
+            emit ProposalPeriodEnded(currentProposalPeriod);
+        }
+
+        emit ProposalEnded(proposalId);
     }
 
     // -- Interface Support --

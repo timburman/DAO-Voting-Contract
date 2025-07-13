@@ -524,6 +524,27 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         emit ProposalEnded(proposalId);
     }
 
+    // Admin functions
+    function addAdmin(address newAdmin) external onlyOwner {
+        require(newAdmin != address(0), "Invalid admin");
+        require(!authorizedAdmins[newAdmin], "Already admin");
+
+        authorizedAdmins[newAdmin] = true;
+        adminCount++;
+
+        emit AdminAdded(newAdmin);
+    }
+
+    function removeAdmin(address admin) external onlyOwner {
+        require(authorizedAdmins[admin], "Not an admin");
+        require(adminCount > 1, "Cannot remove last admin");
+
+        authorizedAdmins[admin] = false;
+        adminCount--;
+
+        emit AdminRemoved(admin);
+    }
+
     // -- Interface Support --
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
         return interfaceId == type(IERC165).interfaceId;

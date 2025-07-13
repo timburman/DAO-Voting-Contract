@@ -133,6 +133,11 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     event CategoryRequirementsUpdated(ProposalCategory indexed category);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
+    event SafeExecutionAttempted(address target, uint256 value, bytes data);
+    event AdminAdded(address indexed newAdmin);
+    event AdminRemoved(address indexed admin);
+    event SafeAddressUpdated(address indexed safeAddress);
+
     // -- Modifiers --
     modifier onlyOwner() {
         require(msg.sender == owner, "ASRVotingContract: Caller is not the owner");
@@ -330,15 +335,179 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
             uint256 abstrainVotes = proposal.voteCounts[2];
             uint256 totalCastedVotes = forVotes + againstVotes + abstrainVotes;
 
-            uint approvalRequired = (totalCastedVotes * proposal.approvalRequired) / 10000;
+            uint256 approvalRequired = (totalCastedVotes * proposal.approvalRequired) / 10000;
 
             if (forVotes >= approvalRequired) {
                 proposal.state = ProposalState.SUCCEEDED;
                 emit ProposalResolved(proposalId, ProposalState.SUCCEEDED, 0);
             } else {
                 proposal.state = ProposalState.DEFEATED;
-                emit ProposalResolved(proposalId, ProposalState.DEFEATED, 1);
+                emit ProposalResolved(proposalId, ProposalState.DEFEATED, againstVotes > abstrainVotes ? 1 : 2);
             }
+        } else {
+            uint256 winningChoice = 0;
+            uint256 maxVotes = proposal.voteCounts[0];
+
+            for (uint256 i = 1; i < proposal.voteCounts.length; i++) {
+                if (proposal.voteCounts[i] > maxVotes) {
+                    maxVotes = proposal.voteCounts[i];
+                    winningChoice = i;
+                }
+            }
+
+            proposal.state = ProposalState.SUCCEEDED;
+            emit ProposalResolved(proposalId, ProposalState.SUCCEEDED, winningChoice);
+        }
+    }
+
+    function executeProposal(uint256 proposalId) external proposalExists(proposalId) onlyAuthorizedAdmin {
+        Proposal storage proposal = proposals[proposalId];
+        require(proposal.state == ProposalState.SUCCEEDED, "Proposal not passed");
+        require(block.timestamp >= proposal.executionTime, "Execution deplay not met");
+        require(block.timestamp <= proposal.gracePeriodEnd, "Grace period expired");
+
+        proposal.state = ProposalState.EXECUTED;
+
+        if (safeAddress != address(0) && proposal.exectionData.length > 0) {
+            _executeViaSafe(proposal.target, proposal.value, proposal.exectionData);
+        }
+
+        emit ProposalExecuted(proposalId, msg.sender);
+    }
+
+    function _executeViaSafe(address target, uint256 value, bytes memory data) internal {
+        require(safeAddress != address(0), "Safe not configured");
+        // =============================================
+        // =============== Place holder ================
+        // =============================================
+        emit SafeExecutionAttempted(target, value, data);
+    }
+
+    // -- Admin Functions --
+
+    function addAdmin(address newAdmin) external onlyOwner {
+        require(newAdmin != address(0), "Invalid admin");
+        require(!authorizedAdmins[newAdmin], "Already admin");
+
+        authorizedAdmins[newAdmin] = true;
+        adminCount++;
+
+        emit AdminAdded(newAdmin);
+    }
+
+    function removeAdmin(address admin) external onlyOwner {
+        require(authorizedAdmins[admin], "Not an admin");
+        require(adminCount > 1, "Cannot remove last admin");
+
+        authorizedAdmins[admin] = false;
+        adminCount--;
+
+        emit AdminRemoved(admin);
+    }
+
+    function setSafeAddress(address _safeAddress) external onlyOwner {
+        safeAddress = _safeAddress;
+        emit SafeAddressUpdated(_safeAddress);
+    }
+
+    function addAuthorizedProposer(address proposer) external onlyAuthorizedAdmin {
+        require(proposer != address(0), "Invalid proposer");
+        authorizedProposers[proposer] = true;
+        emit ProposerAdded(proposer);
+    }
+
+    function removeAuthorizedProposer(address proposer) external onlyAuthorizedAdmin {
+        authorizedProposers[proposer] = false;
+        emit ProposerRemoved(proposer);
+    }
+
+    function cancelProposal(uint256 proposalId) external proposalExists(proposalId) onlyAuthorizedAdmin {
+        Proposal storage proposal = proposals[proposalId];
+        require(proposal.state == ProposalState.ACTIVE, "Proposal not active");
+
+        proposal.state = ProposalState.CANCELLED;
+
+        // End proposal in staking contract
+        stakingContract.endProposal(proposalId);
+        activeProposalCount--;
+
+        emit ProposalCancelled(proposalId, msg.sender);
+    }
+
+    // -- View functions --
+    function getProposalDetails(uint256 proposalId)
+        external
+        view
+        proposalExists(proposalId)
+        returns (
+            string memory title,
+            string memory description,
+            address proposer,
+            ProposalState state,
+            uint256 votingEnd,
+            uint256 totalVotes,
+            string[] memory choices,
+            uint256[] memory voteCounts
+        )
+    {
+        Proposal storage proposal = proposals[proposalId];
+        return (
+            proposal.title,
+            proposal.description,
+            proposal.proposer,
+            proposal.state,
+            proposal.votingEnd,
+            proposal.totalVotes,
+            proposal.choices,
+            proposal.voteCounts
+        );
+    }
+
+    function getUserVoteInfo(uint256 proposalId, address user)
+        external
+        view
+        proposalExists(proposalId)
+        returns (bool hasVoted, uint256 votedChoice, uint256 votingPower)
+    {
+        Proposal storage proposal = proposals[proposalId];
+        return (
+            proposal.hasVoted[user],
+            proposal.userVote[user],
+            stakingContract.getVotingPowerForProposal(user, proposalId)
+        );
+    }
+
+    function getActiveProposals() external view returns (uint256[] memory activeIds) {
+        uint256[] memory tempIds = new uint256[](proposalCounter);
+        uint256 count = 0;
+
+        for (uint256 i = 1; i <= proposalCounter; i++) {
+            if (proposals[i].state == ProposalState.ACTIVE) {
+                tempIds[count] = i;
+                count++;
+            }
+        }
+
+        activeIds = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            activeIds[i] = tempIds[i];
+        }
+    }
+
+    function getProposalsByState(ProposalState state) external view returns (uint256[] memory proposalIds) {
+        uint256[] memory tempIds = new uint256[](proposalCounter);
+        uint256 count = 0;
+
+        for (uint256 i = 1; i <= proposalCounter; i++) {
+            if (proposals[i].state == state) {
+                tempIds[count] = i;
+                count++;
+            }
+        }
+
+        proposalIds = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            proposalIds[i] = tempIds[i];
         }
     }
 

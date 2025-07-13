@@ -120,14 +120,13 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         uint256 period
     );
 
-    event VoteCast(
-        address indexed voter, uint256 indexed proposalId, uint256 choiceIndex, uint256 votingPower, string reason
-    );
+    event VoteCast(address indexed voter, uint256 indexed proposalId, uint256 choiceIndex, uint256 votingPower);
 
     event ProposalCancelled(uint256 indexed proposalId, address indexed canceller);
 
     event ProposalExecuted(uint256 indexed proposalId, address indexed executor);
 
+    event ProposalResolved(uint256 proposalId, ProposalState state, uint256 choiceIndex);
     event ProposerAdded(address indexed proposer);
     event ProposerRemoved(address indexed proposer);
     event ProposerManagerUpdated(address indexed newManager);
@@ -280,19 +279,67 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     }
 
     // -- Voting --
-    function vote(uint256 proposalId, uint256 choiceIndex, string memory reason)
-        external
-        validProposal(proposalId)
-        nonReentrant
-    {
+    function vote(uint256 proposalId, uint256 choiceIndex) external proposalExists(proposalId) nonReentrant {
         Proposal storage proposal = proposals[proposalId];
 
-        require(block.timestamp >= proposal.creationTime, "Voting has not started yet");
-        require(block.timestamp < proposal.votingEnd, "Voting has ended");
+        require(proposal.state == ProposalState.ACTIVE, "Proposal not active");
+        require(
+            block.timestamp <= proposal.votingEnd && block.timestamp >= proposal.creationTime, "Voting period ended"
+        );
+        require(!proposal.hasVoted[msg.sender], "Already voted");
+        require(choiceIndex < proposal.choices.length, "Invalid choice");
 
-        require(choiceIndex < proposal.choices.length, "Invalid choice index");
+        uint256 votingPower = stakingContract.getVotingPowerForProposal(msg.sender, proposalId);
+        require(votingPower > 0, "No voting power");
 
-        uint256 votingPower = stakingContract.getVotingPower(msg.sender);
+        proposal.hasVoted[msg.sender] = true;
+        proposal.userVote[msg.sender] = choiceIndex;
+        proposal.voteCounts[choiceIndex] += votingPower;
+        proposal.totalVotes += votingPower;
+
+        emit VoteCast(msg.sender, proposalId, choiceIndex, votingPower);
+    }
+
+    function resolveProposal(uint256 proposalId) external proposalExists(proposalId) {
+        Proposal storage proposal = proposals[proposalId];
+        require(proposal.state == ProposalState.ACTIVE, "Proposal not active");
+        require(block.timestamp > proposal.votingEnd, "Voting still active");
+
+        _resolveProposal(proposalId);
+    }
+
+    function _resolveProposal(uint256 proposalId) internal {
+        Proposal storage proposal = proposals[proposalId];
+
+        stakingContract.endProposal(proposalId);
+        activeProposalCount--;
+
+        uint256 totalStaked = stakingContract.totalStaked();
+        uint256 quorumRequired = (totalStaked * proposal.quorumRequired) / 10000;
+
+        bool quorumMet = proposal.totalVotes >= quorumRequired;
+
+        if (!quorumMet) {
+            proposal.state = ProposalState.DEFEATED;
+            emit ProposalResolved(proposalId, ProposalState.DEFEATED, 0);
+            return;
+        }
+        if (proposal.proposalType == ProposalType.BINARY) {
+            uint256 forVotes = proposal.voteCounts[0];
+            uint256 againstVotes = proposal.voteCounts[1];
+            uint256 abstrainVotes = proposal.voteCounts[2];
+            uint256 totalCastedVotes = forVotes + againstVotes + abstrainVotes;
+
+            uint approvalRequired = (totalCastedVotes * proposal.approvalRequired) / 10000;
+
+            if (forVotes >= approvalRequired) {
+                proposal.state = ProposalState.SUCCEEDED;
+                emit ProposalResolved(proposalId, ProposalState.SUCCEEDED, 0);
+            } else {
+                proposal.state = ProposalState.DEFEATED;
+                emit ProposalResolved(proposalId, ProposalState.DEFEATED, 1);
+            }
+        }
     }
 
     // -- Interface Support --

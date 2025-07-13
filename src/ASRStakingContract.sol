@@ -255,8 +255,28 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         return totalStaked;
     }
 
-    function getVotingPower(address user) external view returns (uint256) {
+    function getVotingPowerForProposal(address user, uint256 proposalId) public view returns (uint256) {
+        require(proposalId > 0 && proposalId <= totalProposalCount, "Invalid propsal ID");
+
+        if (userSnapshotTaken[user][proposalId]) {
+            return preProposalBalance[user][proposalId];
+        }
+
         return _balances[user];
+    }
+
+    function getVotingPower(address user) external view returns (uint256) {
+        if (!isProposalActive) {
+            return _balances[user];
+        }
+
+        uint256[] memory activeProposals = getActiveProposalIds();
+        if (activeProposals.length == 0) {
+            return _balances[user];
+        }
+
+        uint256 latestProposal = activeProposals[activeProposals.length - 1];
+        return getVotingPowerForProposal(user, latestProposal);
     }
 
     function getUnstakeRequests(address user)
@@ -393,6 +413,33 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
                 index++;
             }
         }
+    }
+
+    // Selective Snapshot view
+
+    function isUserSnapshottedForProposal(address user, uint256 proposalId) external view returns (bool) {
+        return userSnapshotTaken[user][proposalId];
+    }
+
+    function getProposalInfo(uint256 proposalId) external view returns (bool active, uint256 period) {
+        ProposalDetails memory details = proposalDetails[proposalId];
+        return (details.active, uint256(details.period));
+    }
+
+    function getProposalPeriodInfo()
+        external
+        view
+        returns (bool active, uint256 period, uint256 activeCount, uint256 startTime, uint256[] memory proposalIds)
+    {
+        active = isProposalActive;
+        period = currentProposalPeriod;
+        activeCount = activeProposalCount;
+        startTime = proposalPeriodStartTime[currentProposalPeriod];
+        proposalIds = proposalPeriodProposals[currentProposalPeriod];
+    }
+
+    function hasActiveProposals() external view returns (bool) {
+        return isProposalActive;
     }
 
     // -- Owner Functions --

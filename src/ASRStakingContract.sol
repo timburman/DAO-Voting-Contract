@@ -167,6 +167,21 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         require(_balances[msg.sender] >= amount, "Insufficient staked");
         require(unstakeRequests[msg.sender].length < MAX_UNSTAKE_REQUESTS, "Max unstake requests reached");
 
+        if (isProposalActive) {
+            uint256[] memory activeProposals = getActiveProposalIds();
+
+            for (uint256 i = 0; i < activeProposals.length; i++) {
+                uint256 proposalId = activeProposals[i];
+
+                if (!userSnapshotTaken[msg.sender][proposalId]) {
+                    preProposalBalance[msg.sender][proposalId] = _balances[msg.sender];
+                    userSnapshotTaken[msg.sender][proposalId] = true;
+
+                    emit UserSnapshottedForProposal(msg.sender, _balances[msg.sender], proposalId);
+                }
+            }
+        }
+
         _balances[msg.sender] -= amount;
         totalStaked -= amount;
 

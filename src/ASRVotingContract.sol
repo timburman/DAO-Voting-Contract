@@ -22,8 +22,15 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     uint256 public constant VOTING_PERIOD = 7 days;
     uint256 public constant GRACE_PERIOD = 14 days;
 
+    uint256 public constant MAX_ACTIVE_PROPOSALS = 3;
+    uint256 public activeProposalCount;
+
     // -- AUTHORIZATION --
+    mapping(address => bool) public authorizedAdmins;
+    uint256 public adminCount;
     mapping(address => bool) public authorizedProposers;
+
+    address public safeAddress;
 
     // -- Enums --
     enum ProposalCategory {
@@ -63,34 +70,35 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         string description;
         ProposalCategory category;
         ProposalType proposalType;
-        // Execution details
-        address[] targets;
-        bytes[] calldatas;
+        address proposer;
         // Timing
-        uint256 startTime;
-        uint256 endTime;
+        uint256 creationTime;
+        uint256 votingEnd;
         uint256 executionTime;
         uint256 gracePeriodEnd;
         // Snapshot details
-        uint256 snapShotBlock;
+        uint256 snapshotPeriod;
         uint256 totalVotingPower;
         // Voting details
         string[] choices;
         uint256 totalVotes;
+        uint256[] voteCounts;
         // State
-        bool executed;
-        bool cancelled;
-        address proposer;
+        ProposalState state;
+        // requirements
+        uint256 quorumRequired;
+        uint256 approvalRequired;
+        bytes exectionData;
+        address target;
+        uint256 value;
+        mapping(address => bool) hasVoted;
+        mapping(address => uint256) userVote;
     }
 
     // -- Mappings --
 
     // Proposal Storage
     mapping(uint256 => Proposal) public proposals;
-    mapping(uint256 => mapping(uint256 => uint256)) public proposalChoiceVotes; // proposalId => (choiceIndex => votes)
-    mapping(uint256 => mapping(address => bool)) public hasVoted; // proposalId => (user => hasVoted)
-    mapping(uint256 => mapping(address => uint256)) public userVotingPower; // proposalId => (user => votingPower)
-    mapping(uint256 => mapping(address => uint256)) public userVoteChoice; // proposalId => (user => choiceIndex)
 
     // Category Requirements
     mapping(ProposalCategory => ProposalRequirements) public categoryRequirements;
@@ -109,7 +117,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         ProposalType proposalType,
         uint256 startTime,
         uint256 endTime,
-        uint256 snapshotBlock
+        uint256 period
     );
 
     event VoteCast(
@@ -150,6 +158,21 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         _;
     }
 
+    modifier onlyAuthorizedAdmin() {
+        require(authorizedAdmins[msg.sender] || msg.sender == owner, "Not authorized");
+        _;
+    }
+
+    modifier proposalExists(uint256 proposalId) {
+        require(proposalId > 0 && proposalId <= proposalCounter, "Invalid proposal");
+        _;
+    }
+
+    modifier activeProposalLimit() {
+        require(activeProposalCount < MAX_ACTIVE_PROPOSALS, "Too many active proposals");
+        _;
+    }
+
     // -- Initializer --
     function initialize(address _stakingContract, address _proposalManager, address _owner) public initializer {
         require(_stakingContract != address(0), "ASRVotingContract: Staking contract address cannot be zero");
@@ -161,6 +184,8 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         stakingContract = ASRStakingContract(_stakingContract);
         proposalManager = _proposalManager;
         owner = _owner;
+        activeProposalCount = 0;
+        adminCount = 0;
 
         _setDefaultRequirements();
     }
@@ -190,63 +215,66 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         string memory description,
         ProposalCategory category,
         ProposalType proposalType,
-        address[] memory targets,
-        bytes[] memory calldatas,
-        string[] memory choices
-    ) external onlyAuthorizedProposer nonReentrant returns (uint256) {
-        require(bytes(title).length > 0, "Empty title");
-        require(bytes(description).length > 0, "Empty description");
-        require(targets.length == calldatas.length, "Array length mismatch");
+        string[] memory choices,
+        bytes memory executionData,
+        address target,
+        uint256 value
+    ) external onlyAuthorizedProposer activeProposalLimit nonReentrant returns (uint256) {
+        require(bytes(title).length > 0, "Title required");
+        require(bytes(description).length > 0, "Description required");
 
         if (proposalType == ProposalType.BINARY) {
-            require(choices.length == 0, "Binary proposals cannot have choices");
+            require(choices.length == 0, "Binary proposals don't need choices");
         } else {
-            require(choices.length >= 2, "Need at least 2 choices for multi-choice");
-            require(choices.length <= 10, "Too many choices (max 10)");
+            require(choices.length > 2 && choices.length <= 10, "Invalid choice count");
         }
 
         proposalCounter++;
         uint256 proposalId = proposalCounter;
 
-        uint256 snapshotBlock = block.number;
-        uint256 totalVotingPower = stakingContract.getTotalStaked();
-        require(totalVotingPower > 0, "No staked tokens available for voting");
+        uint256 period = stakingContract.createNewProposal(proposalId);
+        activeProposalCount++;
 
-        uint256 startTime = block.timestamp;
-        uint256 endTime = startTime + VOTING_PERIOD;
-        uint256 executionDelay = categoryRequirements[category].executionDelay;
-        uint256 executionTime = endTime + executionDelay;
-        uint256 gracePeriodEnd = executionTime + GRACE_PERIOD;
+        ProposalRequirements memory reqs = categoryRequirements[category];
 
-        // Proposal Creation
+        uint256 votingEnd = block.timestamp + VOTING_PERIOD;
+        uint256 executionDelay = block.timestamp + reqs.executionDelay;
+
         Proposal storage proposal = proposals[proposalId];
         proposal.id = proposalId;
         proposal.title = title;
         proposal.description = description;
+        proposal.proposer = msg.sender;
         proposal.category = category;
         proposal.proposalType = proposalType;
-        proposal.targets = targets;
-        proposal.calldatas = calldatas;
-        proposal.startTime = startTime;
-        proposal.endTime = endTime;
-        proposal.executionTime = executionTime;
-        proposal.gracePeriodEnd = gracePeriodEnd;
-        proposal.snapShotBlock = snapshotBlock;
-        proposal.totalVotingPower = totalVotingPower;
-        proposal.proposer = msg.sender;
+        proposal.creationTime = block.timestamp;
+        proposal.votingEnd = votingEnd;
+        proposal.executionTime = executionDelay;
+        proposal.gracePeriodEnd = executionDelay + GRACE_PERIOD;
+        proposal.state = ProposalState.ACTIVE;
+        proposal.quorumRequired = reqs.quorumPercentage;
+        proposal.approvalRequired = reqs.approvalThreshold;
+        proposal.totalVotes = 0;
+        proposal.exectionData = executionData;
+        proposal.target = target;
+        proposal.value = value;
+        proposal.snapshotPeriod = period;
 
         if (proposalType == ProposalType.BINARY) {
-            proposal.choices.push("For");
-            proposal.choices.push("Against");
-            proposal.choices.push("Abstain");
+            proposals[proposalId].choices.push("For");
+            proposals[proposalId].choices.push("Against");
+            proposals[proposalId].choices.push("Abstrain");
+            proposals[proposalId].voteCounts.push(0);
+            proposals[proposalId].voteCounts.push(0);
+            proposals[proposalId].voteCounts.push(0);
         } else {
             for (uint256 i = 0; i < choices.length; i++) {
-                require(bytes(choices[i]).length > 0, "Empty choice");
-                proposal.choices.push(choices[i]);
+                proposals[proposalId].choices.push(choices[i]);
+                proposals[proposalId].voteCounts.push(0);
             }
         }
 
-        emit ProposalCreated(proposalId, msg.sender, title, category, proposalType, startTime, endTime, snapshotBlock);
+        emit ProposalCreated(proposalId, msg.sender, title, category, proposalType, block.timestamp, votingEnd, period);
 
         return proposalId;
     }
@@ -259,12 +287,10 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     {
         Proposal storage proposal = proposals[proposalId];
 
-        require(block.timestamp >= proposal.startTime, "Voting has not started yet");
-        require(block.timestamp < proposal.endTime, "Voting has ended");
-        require(!proposal.cancelled, "Proposal cancelled");
+        require(block.timestamp >= proposal.creationTime, "Voting has not started yet");
+        require(block.timestamp < proposal.votingEnd, "Voting has ended");
 
         require(choiceIndex < proposal.choices.length, "Invalid choice index");
-        require(!hasVoted[proposalId][msg.sender], "Already voted on this proposal");
 
         uint256 votingPower = stakingContract.getVotingPower(msg.sender);
     }

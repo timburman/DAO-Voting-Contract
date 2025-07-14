@@ -545,6 +545,14 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         emit AdminRemoved(admin);
     }
 
+    function addAsrRewards(address user, uint256 asrAmount) external onlyVotingContract {
+        require(asrAmount > 0, "Invalid ASR amount");
+        require(stakingToken.transferFrom(votingContract, address(this), asrAmount), "Token restake failed");
+
+        _balances[user] += asrAmount;
+        totalStaked += asrAmount;
+    }
+
     // -- Interface Support --
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
         return interfaceId == type(IERC165).interfaceId;

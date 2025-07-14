@@ -123,7 +123,7 @@ contract APRStakingContract is Ownable, ReentrancyGuard {
             _totalSupply = _totalSupply + amount;
             _balances[msg.sender] = _balances[msg.sender] + amount;
         }
-        governanceToken.transferFrom(msg.sender, address(this), amount);
+        require(governanceToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
         emit Staked(msg.sender, amount);
     }
 

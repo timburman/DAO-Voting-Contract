@@ -481,7 +481,7 @@ contract ASRStakingContract is Initializable, ReentrancyGuardUpgradeable, IERC16
         emit VotingContractUpdated(_votingContract);
     }
 
-    function createNewProposal(uint256 proposalId) external onlyVotingContract returns (uint256 period) {
+    function createNewProposal(uint256 proposalId) external onlyVotingContract nonReentrant returns (uint256 period) {
         require(proposalId > 0, "Invalid proposal ID");
         require(!proposalDetails[proposalId].active, "Proposal already active");
         require(activeProposalCount < MAX_ACTIVE_PROPOSALS, "Too many active proposals");

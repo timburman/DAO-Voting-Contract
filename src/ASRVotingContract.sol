@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/interfaces/IERC165.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./ASRStakingContract.sol";
 
 /**
@@ -25,12 +26,38 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     uint256 public constant MAX_ACTIVE_PROPOSALS = 3;
     uint256 public activeProposalCount;
 
+    IERC20 public asrToken;
+
     // -- AUTHORIZATION --
     mapping(address => bool) public authorizedAdmins;
     uint256 public adminCount;
     mapping(address => bool) public authorizedProposers;
 
     address public safeAddress;
+
+    // Quaterly periods
+    uint256 public currentQuarter;
+    uint256 public constant QUARTER_DURATION = 90 days;
+    uint256 public quarterStartTime;
+
+    // ASR pools and distribution
+    mapping(uint256 => uint256) public quarterASRPool;
+    mapping(uint256 => bool) public quarterDistributed;
+    mapping(uint256 => uint256) public quarterTotalVotingPower;
+
+    // User quarterly voting tracking
+    mapping(address => mapping(uint256 => uint256)) public userQuarterVotingPower;
+    mapping(address => mapping(uint256 => bool)) public userQuarterClaimed;
+
+    //  Proposal to quarter mapping
+    mapping(uint256 => uint256) public proposalQuarter;
+
+    // ASR Claim deadline system
+    uint256 public constant CLAIM_DEADLINE = 30 days;
+    mapping(uint256 => uint256) public quarterClaimDeadline;
+    mapping(uint256 => bool) public quarterAsrFunded;
+    mapping(uint256 => uint256) public quarterClaimedAmount;
+    bool public proposalCreationEnabled;
 
     // -- Enums --
     enum ProposalCategory {
@@ -138,6 +165,13 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     event AdminRemoved(address indexed admin);
     event SafeAddressUpdated(address indexed safeAddress);
 
+    event AsrTokenSet(address indexed asrToken);
+    event QuarterStarted(uint256 indexed quarter);
+    event QuarterAsrSet(uint256 indexed quarter, uint256 asrAmount);
+    event QuarterFinalized(uint256 indexed quarter, uint256 asrPool, uint256 claimDeadline);
+    event AsrRewardsClaimed(address indexed user, uint256[] quarters, uint256 totalAsrReward);
+    event UnclaimedAsrRecovered(uint256 indexed quarter, uint256 amount);
+
     // -- Modifiers --
     modifier onlyOwner() {
         require(msg.sender == owner, "ASRVotingContract: Caller is not the owner");
@@ -178,10 +212,14 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     }
 
     // -- Initializer --
-    function initialize(address _stakingContract, address _proposalManager, address _owner) public initializer {
+    function initialize(address _stakingContract, address _proposalManager, address _asrToken, address _owner)
+        public
+        initializer
+    {
         require(_stakingContract != address(0), "ASRVotingContract: Staking contract address cannot be zero");
         require(_proposalManager != address(0), "ASRVotingContract: Proposal manager address cannot be zero");
         require(_owner != address(0), "ASRVotingContract: Owner address cannot be zero");
+        require(_asrToken != address(0), "Invalid ASR token");
 
         __ReentrancyGuard_init();
 
@@ -190,6 +228,11 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         owner = _owner;
         activeProposalCount = 0;
         adminCount = 0;
+        currentQuarter = 0;
+        quarterStartTime = 0;
+        proposalCreationEnabled = false;
+
+        asrToken = IERC20(_asrToken);
 
         _setDefaultRequirements();
     }
@@ -226,6 +269,9 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     ) external onlyAuthorizedProposer activeProposalLimit nonReentrant returns (uint256) {
         require(bytes(title).length > 0, "Title required");
         require(bytes(description).length > 0, "Description required");
+        require(proposalCreationEnabled, "Proposal creation disabled - ASR not funded");
+        require(quarterAsrFunded[currentQuarter], "Current quarter not funded");
+        require(currentQuarter > 0, "No active quarter");
 
         if (proposalType == ProposalType.BINARY) {
             require(choices.length == 0, "Binary proposals don't need choices");
@@ -302,7 +348,20 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         proposal.voteCounts[choiceIndex] += votingPower;
         proposal.totalVotes += votingPower;
 
+        _trackAsrVoting(msg.sender, proposalId, votingPower);
+
         emit VoteCast(msg.sender, proposalId, choiceIndex, votingPower);
+    }
+
+    function _trackAsrVoting(address user, uint256 proposalId, uint256 votingPower) internal {
+        uint256 quarter = getCurrentQuarter();
+        require(quarter > 0, "No active quarter");
+
+        userQuarterVotingPower[user][quarter] += votingPower;
+
+        quarterTotalVotingPower[quarter] += votingPower;
+
+        proposalQuarter[proposalId] = quarter;
     }
 
     function resolveProposal(uint256 proposalId) external proposalExists(proposalId) {
@@ -383,6 +442,23 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         emit SafeExecutionAttempted(target, value, data);
     }
 
+    function startNewQuarter() external onlyAuthorizedAdmin {
+        if (currentQuarter > 0) {
+            require(block.timestamp >= quarterStartTime + QUARTER_DURATION, "Quarter not found");
+
+            quarterDistributed[currentQuarter] = true;
+            quarterClaimDeadline[currentQuarter] = block.timestamp + CLAIM_DEADLINE;
+
+            emit QuarterFinalized(currentQuarter, quarterASRPool[currentQuarter], quarterClaimDeadline[currentQuarter]);
+        }
+
+        currentQuarter++;
+        quarterStartTime = block.timestamp;
+        proposalCreationEnabled = false;
+
+        emit QuarterStarted(currentQuarter);
+    }
+
     // -- Admin Functions --
 
     function addAdmin(address newAdmin) external onlyOwner {
@@ -432,6 +508,26 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         activeProposalCount--;
 
         emit ProposalCancelled(proposalId, msg.sender);
+    }
+
+    function startQuarterAsrAndFund(uint256 quarter, uint256 asrAmount) external onlyOwner {
+        require(quarter > 0, "Invalid quarter");
+        require(asrAmount > 0, "Invalid ASR amount");
+        require(!quarterAsrFunded[quarter], "Quarter already funded");
+        require(address(asrToken) != address(0), "ASR token not set");
+        require(asrToken.balanceOf(msg.sender) >= asrAmount, "Not enough tokens in account");
+        require(asrToken.allowance(msg.sender, address(this)) >= asrAmount, "Aproval amount not sufficient");
+
+        require(asrToken.transferFrom(msg.sender, address(this), asrAmount), "Asr transfer failed");
+
+        quarterASRPool[quarter] = asrAmount;
+        quarterAsrFunded[quarter] = true;
+
+        if (quarter == currentQuarter) {
+            proposalCreationEnabled = true;
+        }
+
+        emit QuarterAsrSet(quarter, asrAmount);
     }
 
     // -- View functions --
@@ -509,6 +605,10 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         for (uint256 i = 0; i < count; i++) {
             proposalIds[i] = tempIds[i];
         }
+    }
+
+    function getCurrentQuarter() public view returns (uint256) {
+        return currentQuarter;
     }
 
     // -- Interface Support --

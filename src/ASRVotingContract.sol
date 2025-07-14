@@ -361,7 +361,46 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
 
         quarterTotalVotingPower[quarter] += votingPower;
 
-        proposalQuarter[proposalId] = quarter;
+        if (proposalQuarter[proposalId] != quarter) {
+            proposalQuarter[proposalId] = quarter;
+        }
+    }
+
+    function calculateAsrReward(address user, uint256 quarter) public view returns (uint256 asrReward) {
+        if (quarterTotalVotingPower[quarter] == 0) return 0;
+        if (!quarterAsrFunded[quarter]) return 0;
+
+        uint256 userVotingPower = userQuarterVotingPower[user][quarter];
+        uint256 totalVotingPower = quarterTotalVotingPower[quarter];
+        uint256 asrPool = quarterASRPool[quarter];
+
+        asrReward = (userVotingPower * asrPool) / totalVotingPower;
+    }
+
+    function claimAsrRewards(uint256[] memory quarters) external nonReentrant {
+        uint256 totalAsrReward = 0;
+
+        for (uint256 i = 0; i < quarters.length; i++) {
+            uint256 quarter = quarters[i];
+
+            require(quarter < getCurrentQuarter(), "Quarter not completed");
+            require(quarterDistributed[quarter], "Quarter not distributed");
+            require(!userQuarterClaimed[msg.sender][quarter], "Already claimed");
+            require(block.timestamp <= quarterClaimDeadline[quarter], "Claim deadline passed");
+
+            uint256 asrReward = calculateAsrReward(msg.sender, quarter);
+            if (asrReward > 0) {
+                userQuarterClaimed[msg.sender][quarter] = true;
+                quarterClaimedAmount[quarter] += asrReward;
+                totalAsrReward += asrReward;
+            }
+        }
+
+        if (totalAsrReward > 0) {
+            asrToken.approve(address(stakingContract), totalAsrReward);
+            stakingContract.addAsrRewards(msg.sender, totalAsrReward);
+            emit AsrRewardsClaimed(msg.sender, quarters, totalAsrReward);
+        }
     }
 
     function resolveProposal(uint256 proposalId) external proposalExists(proposalId) {
@@ -530,6 +569,21 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         emit QuarterAsrSet(quarter, asrAmount);
     }
 
+    function recoverUncalimedAsr(uint256 quarter) external onlyOwner {
+        require(quarter < getCurrentQuarter(), "Quarter not completed");
+        require(quarterDistributed[quarter], "Quarter not distributed");
+        require(block.timestamp > quarterClaimDeadline[quarter], "Claim period not ended");
+
+        uint256 totalAsrPool = quarterASRPool[quarter];
+        uint256 claimedAmount = quarterClaimedAmount[quarter];
+        uint256 unclaimedAmount = totalAsrPool - claimedAmount;
+
+        if (unclaimedAmount > 0) {
+            require(asrToken.transfer(msg.sender, unclaimedAmount), "Recovery transfer failed");
+            emit UnclaimedAsrRecovered(quarter, unclaimedAmount);
+        }
+    }
+
     // -- View functions --
     function getProposalDetails(uint256 proposalId)
         external
@@ -609,6 +663,83 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
 
     function getCurrentQuarter() public view returns (uint256) {
         return currentQuarter;
+    }
+
+    function canUserClaim(address user, uint256 quarter)
+        external
+        view
+        returns (bool canClaim, string memory reason, uint256 asrAmount, uint256 deadline)
+    {
+        if (quarter >= getCurrentQuarter()) {
+            return (false, "Quarter not completed", 0, 0);
+        }
+
+        if (!quarterDistributed[quarter]) {
+            return (false, "Quarter not distributed", 0, 0);
+        }
+
+        if (userQuarterClaimed[user][quarter]) {
+            return (false, "Already claimed", 0, 0);
+        }
+
+        if (block.timestamp > quarterClaimDeadline[quarter]) {
+            return (false, "Claim deadline passed", 0, quarterClaimDeadline[quarter]);
+        }
+
+        uint256 asrReward = calculateAsrReward(user, quarter);
+        return (true, "Can claim", asrReward, quarterClaimDeadline[quarter]);
+    }
+
+    /**
+     * @dev Get quarter status
+     */
+    function getQuarterStatus(uint256 quarter)
+        external
+        view
+        returns (
+            bool funded,
+            bool distributed,
+            uint256 asrPool,
+            uint256 claimDeadline,
+            bool claimActive,
+            uint256 totalVotingPower
+        )
+    {
+        funded = quarterAsrFunded[quarter];
+        distributed = quarterDistributed[quarter];
+        asrPool = quarterASRPool[quarter];
+        claimDeadline = quarterClaimDeadline[quarter];
+        claimActive = distributed && block.timestamp <= claimDeadline;
+        totalVotingPower = quarterTotalVotingPower[quarter];
+    }
+
+    /**
+     * @dev Get user's ASR info for multiple quarters
+     */
+    function getUserAsrInfo(address user, uint256[] memory quarters)
+        external
+        view
+        returns (
+            uint256[] memory votingPowers,
+            uint256[] memory asrRewards,
+            bool[] memory claimed,
+            bool[] memory canClaim
+        )
+    {
+        votingPowers = new uint256[](quarters.length);
+        asrRewards = new uint256[](quarters.length);
+        claimed = new bool[](quarters.length);
+        canClaim = new bool[](quarters.length);
+
+        for (uint256 i = 0; i < quarters.length; i++) {
+            uint256 quarter = quarters[i];
+            votingPowers[i] = userQuarterVotingPower[user][quarter];
+            asrRewards[i] = calculateAsrReward(user, quarter);
+            claimed[i] = userQuarterClaimed[user][quarter];
+
+            canClaim[i] = quarter < getCurrentQuarter() && quarterDistributed[quarter] && !claimed[i]
+                && block.timestamp <= quarterClaimDeadline[quarter];
+        }
     }
 
     // -- Interface Support --

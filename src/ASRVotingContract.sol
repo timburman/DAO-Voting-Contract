@@ -549,7 +549,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         emit ProposalCancelled(proposalId, msg.sender);
     }
 
-    function startQuarterAsrAndFund(uint256 quarter, uint256 asrAmount) external onlyOwner {
+    function setQuarterAsrAndFund(uint256 quarter, uint256 asrAmount) external onlyOwner {
         require(quarter > 0, "Invalid quarter");
         require(asrAmount > 0, "Invalid ASR amount");
         require(!quarterAsrFunded[quarter], "Quarter already funded");

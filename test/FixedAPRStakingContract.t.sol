@@ -73,14 +73,13 @@ contract FixedAPRStakingContractTest is Test {
     // 🧪 BASIC FUNCTIONALITY TESTS
     // ==========================================
 
-    function testConstructorInitialization() public {
+    function testConstructorInitialization() public view {
         assertEq(address(stakingContract.governanceToken()), address(governanceToken));
         assertEq(stakingContract.owner(), owner);
         assertEq(stakingContract.getStakePeriodsCount(), 5);
 
         // Check APR was set correctly in constructor
-        (uint256 totalFunded, uint256 totalReserved, uint256 availableFunding, uint256 baseAPR, bool fundsAvailable) =
-            stakingContract.getRewardPoolStatus();
+        (,,, uint256 baseAPR, bool fundsAvailable) = stakingContract.getRewardPoolStatus();
         assertEq(baseAPR, BASE_APR_365);
         assertTrue(fundsAvailable);
 
@@ -358,7 +357,6 @@ contract FixedAPRStakingContractTest is Test {
         // Create compound pool
         _createCompoundPoolWithRewards(user1, 20 ether, 3);
 
-        uint256 poolValueBefore = stakingContract.getCompoundPoolValue(user1);
         uint256 stakeCountBefore = stakingContract.getStakeCount(user1);
 
         // Auto-flush using preferred period
@@ -415,8 +413,6 @@ contract FixedAPRStakingContractTest is Test {
             if (expectedReward > 0) {
                 vm.prank(user1);
                 stakingContract.claimRewards(0);
-
-                uint256 poolValue = stakingContract.getCompoundPoolValue(user1);
 
                 // If auto-flush happened, we should have more stakes and no pool
                 if (!stakingContract.hasCompoundPool(user1)) {
@@ -621,13 +617,8 @@ contract FixedAPRStakingContractTest is Test {
         stakingContract.stake(500 ether, 4, false);
         vm.stopPrank();
 
-        (
-            uint256[] memory amounts,
-            uint256[] memory unlockTimes,
-            uint256[] memory aprs,
-            bool[] memory canWithdrawList,
-            uint8[] memory periodIndices
-        ) = stakingContract.getAllUserStakes(user1);
+        (uint256[] memory amounts,,, bool[] memory canWithdrawList, uint8[] memory periodIndices) =
+            stakingContract.getAllUserStakes(user1);
 
         assertEq(amounts.length, 3);
         assertEq(amounts[0], 1000 ether);
@@ -796,7 +787,7 @@ contract FixedAPRStakingContractTest is Test {
         assertEq(stakingContract.getTotalStaked(user1), 4500 ether);
 
         // Check reward pool reserved amount increased
-        (uint256 funded, uint256 reserved, uint256 available, uint256 baseAPR, bool fundsAvailable) =
+        (uint256 funded, uint256 reserved, uint256 available,, bool fundsAvailable) =
             stakingContract.getRewardPoolStatus();
 
         assertEq(funded, initialFunded);

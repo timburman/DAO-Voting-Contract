@@ -81,4 +81,50 @@ contract ASRVotingContractTest is Test {
         assertEq(newContract.currentQuarter(), 0);
         assertFalse(newContract.proposalCreationEnabled());
     }
+
+    function testInitializeWithZeroAddress() public {
+        ASRVotingContract newContract = new ASRVotingContract();
+
+        vm.startPrank(owner);
+
+        vm.expectRevert("ASRVotingContract: Staking contract address cannot be zero");
+        newContract.initialize(address(0), proposer1, address(stakingToken), owner);
+
+        vm.expectRevert("ASRVotingContract: Owner address cannot be zero");
+        newContract.initialize(address(stakingContract), proposer1, address(stakingToken), address(0));
+
+        vm.stopPrank();
+    }
+
+    function testInitializeOnlyOne() public {
+        vm.startPrank(owner);
+
+        vm.expectRevert("InvalidInitialization()");
+        votingContract.initialize(address(stakingContract), proposer1, address(stakingToken), owner);
+
+        vm.stopPrank();
+    }
+
+    function testSetStakingContract() public view {
+        assertEq(address(votingContract.stakingContract()), address(stakingContract));
+    }
+
+    function testSetSafeAddress() public {
+        address newSafe = makeAddr("newSafe");
+
+        vm.prank(owner);
+        votingContract.setSafeAddress(newSafe);
+
+        assertEq(votingContract.safeAddress(), newSafe);
+    }
+
+    // -- 2. ADMIN & ACCESS CONTROL TESTS --
+
+    function testAddAdmin() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        assertTrue(votingContract.authorizedAdmins(admin1));
+        assertEq(votingContract.adminCount(), 1);
+    }
 }

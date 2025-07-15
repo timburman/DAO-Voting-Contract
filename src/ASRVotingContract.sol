@@ -483,7 +483,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
 
     function startNewQuarter() external onlyAuthorizedAdmin {
         if (currentQuarter > 0) {
-            require(block.timestamp >= quarterStartTime + QUARTER_DURATION, "Quarter not found");
+            require(block.timestamp >= quarterStartTime + QUARTER_DURATION, "Quarter not ended");
 
             quarterDistributed[currentQuarter] = true;
             quarterClaimDeadline[currentQuarter] = block.timestamp + CLAIM_DEADLINE;

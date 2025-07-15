@@ -66,6 +66,47 @@ contract ASRVotingContractTest is Test {
         stakingToken.approve(address(votingContract), type(uint256).max);
     }
 
+    // ========== HELPER FUNCTIONS ==========
+
+    function _setupQuarterAndFunding() internal {
+        vm.startPrank(owner);
+        votingContract.addAdmin(admin1);
+        vm.stopPrank();
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        vm.prank(owner);
+        votingContract.setQuarterAsrAndFund(1, 100_000 ether);
+    }
+
+    function _setupStakingUsers() internal {
+        vm.prank(user1);
+        stakingContract.stake(1000 ether);
+
+        vm.prank(user2);
+        stakingContract.stake(2000 ether);
+    }
+
+    function _createTestProposal() internal returns (uint256) {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        return votingContract.createProposal(
+            "Test Proposal",
+            "Test Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+    }
+
     // -- 1. SETUP & INITIALIZATION TESTS --
     function testInitialize() public {
         // Deploy fresh contract
@@ -127,4 +168,252 @@ contract ASRVotingContractTest is Test {
         assertTrue(votingContract.authorizedAdmins(admin1));
         assertEq(votingContract.adminCount(), 1);
     }
+
+    function testRemoveAdmin() public {
+        vm.startPrank(owner);
+
+        votingContract.addAdmin(admin1);
+        votingContract.addAdmin(admin2);
+
+        votingContract.removeAdmin(admin1);
+
+        assertFalse(votingContract.authorizedAdmins(admin1));
+        assertTrue(votingContract.authorizedAdmins(admin2));
+        assertEq(votingContract.adminCount(), 1);
+    }
+
+    function testCannotRemoveLastAdmin() public {
+        vm.startPrank(owner);
+
+        votingContract.addAdmin(admin1);
+
+        vm.expectRevert("Cannot remove last admin");
+        votingContract.removeAdmin(admin1);
+
+        vm.stopPrank();
+    }
+
+    function testOnlyOwnerCanAddAdmin() public {
+        vm.prank(admin1);
+        vm.expectRevert("ASRVotingContract: Caller is not the owner");
+        votingContract.addAdmin(admin2);
+    }
+
+    function testAddAuthorizedProposer() public {
+        vm.startPrank(owner);
+        votingContract.addAdmin(admin1);
+        vm.stopPrank();
+
+        vm.prank(admin1);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        assertTrue(votingContract.authorizedProposers(proposer1));
+    }
+
+    function testRemoveAuthorizedProposer() public {
+        vm.startPrank(owner);
+        votingContract.addAdmin(admin1);
+        vm.stopPrank();
+
+        vm.startPrank(admin1);
+        votingContract.addAuthorizedProposer(proposer1);
+        votingContract.removeAuthorizedProposer(proposer1);
+        vm.stopPrank();
+
+        assertFalse(votingContract.authorizedProposers(proposer1));
+    }
+
+    function testOnlyAuthorizedAdminCanManageProposers() public {
+        vm.prank(user1);
+        vm.expectRevert("Not authorized");
+        votingContract.addAuthorizedProposer(proposer1);
+    }
+
+    function testUnauthorizedCannotCreateProposal() public {
+        // Setup quarter and funding
+        _setupQuarterAndFunding();
+
+        vm.prank(user1);
+        vm.expectRevert("ASRVotingContract: Caller is not an authorized proposer");
+        votingContract.createProposal(
+            "Test Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+    }
+
+    // -- 3. QUARTERLY MANAGEMENT TESTS --
+
+    function testStartNewQuarter() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        assertEq(votingContract.currentQuarter(), 1);
+        assertFalse(votingContract.proposalCreationEnabled());
+    }
+
+    function testCannotStartQuarterEarly() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        vm.startPrank(admin1);
+        votingContract.startNewQuarter();
+
+        vm.expectRevert("Quarter not ended");
+        votingContract.startNewQuarter();
+
+        vm.stopPrank();
+    }
+
+    function testQuarterFinalization() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        vm.startPrank(admin1);
+
+        votingContract.startNewQuarter();
+
+        skip(QUARTER_DURATION + 1 days);
+
+        votingContract.startNewQuarter();
+
+        assertTrue(votingContract.quarterDistributed(1));
+        assertGt(votingContract.quarterClaimDeadline(1), 0);
+
+        vm.stopPrank();
+    }
+
+    function testSetQuarterAsrAndFund() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256 asrAmount = 100000 ether;
+
+        vm.prank(owner);
+        votingContract.setQuarterAsrAndFund(1, asrAmount);
+
+        assertEq(votingContract.quarterASRPool(1), asrAmount);
+        assertTrue(votingContract.quarterAsrFunded(1));
+        assertTrue(votingContract.proposalCreationEnabled());
+        assertEq(stakingToken.balanceOf(address(votingContract)), asrAmount);
+    }
+
+    function testCannotFundQuarterTwice() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256 asrAmount = 100000 ether;
+
+        vm.startPrank(owner);
+        votingContract.setQuarterAsrAndFund(1, asrAmount);
+
+        vm.expectRevert("Quarter already funded");
+        votingContract.setQuarterAsrAndFund(1, asrAmount);
+
+        vm.stopPrank();
+    }
+
+    function testCannotFundWithZeroAmount() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        vm.prank(owner);
+        vm.expectRevert("Invalid ASR amount");
+        votingContract.setQuarterAsrAndFund(1, 0);
+    }
+
+    function testProposalCreationDisabledWithoutFunding() public {
+        vm.startPrank(owner);
+        votingContract.addAdmin(admin1);
+        votingContract.addAuthorizedProposer(proposer1);
+        vm.stopPrank();
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        vm.prank(proposer1);
+        vm.expectRevert("Proposal creation disabled - ASR not funded");
+        votingContract.createProposal(
+            "Test Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+    }
+
+    function testProposalCreationEnabledAfterFunding() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Test Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        assertEq(proposalId, 1);
+    }
+
+    function testGetCurrentQuarter() public {
+        vm.prank(owner);
+        votingContract.addAdmin(admin1);
+
+        assertEq(votingContract.getCurrentQuarter(), 0);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        assertEq(votingContract.getCurrentQuarter(), 1);
+    }
+
+    function testQuarterStatusTracking() public {
+        _setupQuarterAndFunding();
+
+        (
+            bool funded,
+            bool distributed,
+            uint256 asrPool,
+            uint256 claimDeadline,
+            bool claimActive,
+            uint256 totalVotingPower
+        ) = votingContract.getQuarterStatus(1);
+
+        assertTrue(funded);
+        assertFalse(distributed);
+        assertEq(asrPool, 100000 ether);
+        assertEq(claimDeadline, 0);
+        assertFalse(claimActive);
+        assertEq(totalVotingPower, 0);
+    }
+
+    // -- 4. PROPOSAL CREATION TESTS --
 }

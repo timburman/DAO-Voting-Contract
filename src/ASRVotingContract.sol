@@ -281,6 +281,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
 
         proposalCounter++;
         uint256 proposalId = proposalCounter;
+        proposalQuarter[proposalId] = getCurrentQuarter();
 
         uint256 period = stakingContract.createNewProposal(proposalId);
         activeProposalCount++;
@@ -356,14 +357,15 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     function _trackAsrVoting(address user, uint256 proposalId, uint256 votingPower) internal {
         uint256 quarter = getCurrentQuarter();
         require(quarter > 0, "No active quarter");
+        require(proposalQuarter[proposalId] == quarter, "Proposal not in the quarter");
 
         userQuarterVotingPower[user][quarter] += votingPower;
 
         quarterTotalVotingPower[quarter] += votingPower;
 
-        if (proposalQuarter[proposalId] != quarter) {
-            proposalQuarter[proposalId] = quarter;
-        }
+        // if (proposalQuarter[proposalId] != quarter) {
+        //     proposalQuarter[proposalId] = quarter;
+        // }
     }
 
     function calculateAsrReward(address user, uint256 quarter) public view returns (uint256 asrReward) {
@@ -484,6 +486,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     function startNewQuarter() external onlyAuthorizedAdmin {
         if (currentQuarter > 0) {
             require(block.timestamp >= quarterStartTime + QUARTER_DURATION, "Quarter not ended");
+            require(activeProposalCount == 0, "Previous quarter proposal still active");
 
             quarterDistributed[currentQuarter] = true;
             quarterClaimDeadline[currentQuarter] = block.timestamp + CLAIM_DEADLINE;

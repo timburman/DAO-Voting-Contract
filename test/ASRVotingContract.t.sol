@@ -282,7 +282,6 @@ contract ASRVotingContractTest is Test {
         votingContract.startNewQuarter();
 
         skip(QUARTER_DURATION + 1 days);
-
         votingContract.startNewQuarter();
 
         assertTrue(votingContract.quarterDistributed(1));
@@ -415,5 +414,353 @@ contract ASRVotingContractTest is Test {
         assertEq(totalVotingPower, 0);
     }
 
+    function testCannotStartQuarterIfProposalActive() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        skip(QUARTER_DURATION - 1 days);
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Test Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        assertEq(proposalId, 1);
+
+        skip(2 days);
+
+        vm.prank(admin1);
+        vm.expectRevert("Previous quarter proposal still active");
+        votingContract.startNewQuarter();
+
+        skip(6 days);
+        vm.startPrank(admin1);
+        votingContract.resolveProposal(1);
+        votingContract.startNewQuarter();
+        vm.stopPrank();
+    }
+
     // -- 4. PROPOSAL CREATION TESTS --
+
+    function testCreateBinaryProposal() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Binary Proposal",
+            "Should we do X?",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        assertEq(proposalId, 1);
+        assertEq(votingContract.proposalCounter(), 1);
+        assertEq(votingContract.activeProposalCount(), 1);
+        assertEq(votingContract.proposalQuarter(proposalId), 1);
+    }
+
+    function testCreateMultiChoiceProposal() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        string[] memory choices = new string[](3);
+        choices[0] = "Option-A";
+        choices[1] = "Option-B";
+        choices[2] = "Option-C";
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Multichoice proposal",
+            "Which option do you prefer?",
+            ASRVotingContract.ProposalCategory.TREASURY_ACTION,
+            ASRVotingContract.ProposalType.MULTICHOICE,
+            choices,
+            "",
+            address(0),
+            0
+        );
+
+        assertEq(proposalId, 1);
+        assertEq(votingContract.proposalCounter(), 1);
+    }
+
+    function testCreateProposalCallsStakingContract() public {
+        _setupQuarterAndFunding();
+        _setupStakingUsers();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Test Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+        delete proposalId;
+        assertTrue(stakingContract.hasActiveProposals());
+        assertEq(stakingContract.activeProposalCount(), 1);
+    }
+
+    function testCannnotCreateProposalWithoutFunding() public {
+        vm.startPrank(owner);
+        votingContract.addAdmin(admin1);
+        votingContract.addAuthorizedProposer(proposer1);
+        vm.stopPrank();
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        vm.prank(proposer1);
+        vm.expectRevert("Proposal creation disabled - ASR not funded");
+        votingContract.createProposal(
+            "Test proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+    }
+
+    function testCannotExceedMaxActiveProposals() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.startPrank(proposer1);
+        for (uint256 i = 0; i < 3; i++) {
+            votingContract.createProposal(
+                string(abi.encodePacked("Proposal", i)),
+                "Description",
+                ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+                ASRVotingContract.ProposalType.BINARY,
+                new string[](0),
+                "",
+                address(0),
+                0
+            );
+        }
+
+        vm.expectRevert("Too many active proposals");
+        votingContract.createProposal(
+            "Fourth Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+        vm.stopPrank();
+    }
+
+    function testProposalIdIncrementsCorrectly() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.startPrank(proposer1);
+
+        uint256 id1 = votingContract.createProposal(
+            "Proposal 1",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        uint256 id2 = votingContract.createProposal(
+            "Proposal 2",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        vm.stopPrank();
+
+        assertEq(id1, 1);
+        assertEq(id2, 2);
+        assertEq(votingContract.proposalCounter(), 2);
+    }
+
+    function testProposalMetadataStoredCorrectly() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        string memory title = "Test Proposal";
+        string memory description = "Test Description";
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            title,
+            description,
+            ASRVotingContract.ProposalCategory.TREASURY_ACTION,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        (
+            string memory storedTitle,
+            string memory storedDescription,
+            address proposer,
+            ASRVotingContract.ProposalState state,
+            ,
+            ,
+            string[] memory choices,
+        ) = votingContract.getProposalDetails(proposalId);
+
+        assertEq(storedTitle, title);
+        assertEq(storedDescription, description);
+        assertEq(proposer, proposer1);
+        assertEq(uint256(state), uint256(ASRVotingContract.ProposalState.ACTIVE));
+        assertEq(choices.length, 3); // Binary proposal has 3 choices
+        assertEq(choices[0], "For");
+        assertEq(choices[1], "Against");
+        assertEq(choices[2], "Abstrain");
+    }
+
+    function testProposalQuarterAssignment() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Test Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        assertEq(votingContract.proposalQuarter(proposalId), 1);
+    }
+
+    function testInvalidProposalCreationFails() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.startPrank(proposer1);
+
+        vm.expectRevert("Title required");
+        votingContract.createProposal(
+            "",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        vm.expectRevert("Description required");
+        votingContract.createProposal(
+            "Title",
+            "",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        vm.stopPrank();
+    }
+
+    function testCreateProposalDifferentCategories() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.startPrank(proposer1);
+
+        votingContract.createProposal(
+            "Parameter Proposer",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        votingContract.createProposal(
+            "Treasury Proposer",
+            "Desc",
+            ASRVotingContract.ProposalCategory.TREASURY_ACTION,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        votingContract.createProposal(
+            "Emergency Proposal",
+            "Desc",
+            ASRVotingContract.ProposalCategory.EMERGENCY_ACTION,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        vm.stopPrank();
+
+        assertEq(votingContract.proposalCounter(), 3);
+    }
+
+    // -- 5. VOTING MECHANISM TESTS --
 }

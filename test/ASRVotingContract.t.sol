@@ -85,7 +85,7 @@ contract ASRVotingContractTest is Test {
         stakingContract.stake(1000 ether);
 
         vm.prank(user2);
-        stakingContract.stake(2000 ether);
+        stakingContract.stake(1500 ether);
     }
 
     function _createTestProposal() internal returns (uint256) {
@@ -763,4 +763,385 @@ contract ASRVotingContractTest is Test {
     }
 
     // -- 5. VOTING MECHANISM TESTS --
+
+    function testVoteOnBinaryProposal() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        (,,,,, uint256 totalVotes, string[] memory choices, uint256[] memory voteCounts) =
+            votingContract.getProposalDetails(proposalId);
+
+        assertEq(totalVotes, 1000 ether);
+        assertEq(choices[0], "For");
+        assertEq(voteCounts[0], 1000 ether);
+        assertEq(voteCounts[1], 0 ether);
+        assertEq(voteCounts[2], 0 ether);
+    }
+
+    function testVoteOnMultiChoiceProposal() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        string[] memory choices = new string[](3);
+        choices[0] = "Option-A";
+        choices[1] = "Option-B";
+        choices[2] = "Option-C";
+
+        _setupStakingUsers();
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Multi choice",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.MULTICHOICE,
+            choices,
+            "",
+            address(0),
+            0
+        );
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        (,,,,, uint256 totalVotes,, uint256[] memory voteCounts) = votingContract.getProposalDetails(proposalId);
+
+        assertEq(voteCounts[1], 1000 ether);
+        assertEq(totalVotes, 1000 ether);
+    }
+
+    function testVotingSelectiveSnapshot() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user2);
+        stakingContract.stake(500 ether);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 1);
+
+        (,,,,,,, uint256[] memory voteCounts) = votingContract.getProposalDetails(proposalId);
+
+        assertEq(voteCounts[1], 1500 ether);
+    }
+
+    function testCannotVoteTwice() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.startPrank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.expectRevert("Already voted");
+        votingContract.vote(proposalId, 0);
+
+        vm.stopPrank();
+    }
+
+    function testCannotVoteWithZeroPower() public {
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user2);
+        vm.expectRevert("No voting power");
+        votingContract.vote(proposalId, 1);
+    }
+
+    function testCannotVoteOnInactiveProposal() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.warp(block.timestamp + 8 days);
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(user1);
+        vm.expectRevert("Proposal not active");
+        votingContract.vote(proposalId, 1);
+    }
+
+    function testCannotVoteAfterDeadline() public {
+        uint256 proposalId = _createTestProposal();
+        _setupStakingUsers();
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(user1);
+        vm.expectRevert("Voting period ended");
+        votingContract.vote(proposalId, 1);
+    }
+
+    function testVotingPowerCalculatedCorrectly() public {
+        vm.prank(user1);
+        stakingContract.stake(1000 ether);
+
+        vm.prank(user2);
+        stakingContract.stake(2000 ether);
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 1);
+
+        (,,,,, uint256 totalVotes,, uint256[] memory voteCounts) = votingContract.getProposalDetails(proposalId);
+
+        assertEq(totalVotes, 3000 ether);
+        assertEq(voteCounts[1], 3000 ether);
+    }
+
+    function testVoteCountsAccumulate() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 0);
+
+        (,,,,, uint256 totalVotes,, uint256[] memory voteCounts) = votingContract.getProposalDetails(proposalId);
+
+        assertEq(totalVotes, 2500 ether);
+        assertEq(voteCounts[1], 1000 ether);
+        assertEq(voteCounts[0], 1500 ether);
+    }
+
+    function testVotingTracksAsrParticipation() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        assertEq(votingContract.userQuarterVotingPower(user1, 1), 1000 ether);
+        assertEq(votingContract.quarterTotalVotingPower(1), 1000 ether);
+    }
+
+    function testInvalidChoiceIndexFails() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        vm.expectRevert("Invalid choice");
+        votingContract.vote(proposalId, 5);
+    }
+
+    // -- 6. PROPOSAL RESOLUTION TESTS --
+
+    function testResolveProposalAfterVotingEnds() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        skip(8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        (,,, ASRVotingContract.ProposalState state,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(state), uint256(ASRVotingContract.ProposalState.SUCCEEDED));
+        assertEq(votingContract.activeProposalCount(), 0);
+    }
+
+    function testCannotResolveActionProposal() public {
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(admin1);
+        vm.expectRevert("Voting still active");
+        votingContract.resolveProposal(proposalId);
+    }
+
+    function testBinaryProposalPassesWithMajority() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 0);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        (,,, ASRVotingContract.ProposalState state,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(state), uint256(ASRVotingContract.ProposalState.SUCCEEDED));
+    }
+
+    function testBinaryProposalFailsWithoutQuorum() public {
+        _setupStakingUsers();
+        address tempUser = makeAddr("tempUser");
+
+        vm.prank(user2);
+        stakingToken.transfer(tempUser, 10 ether);
+
+        vm.startPrank(tempUser);
+        stakingToken.approve(address(stakingContract), 10 ether);
+        stakingContract.stake(10 ether);
+        vm.stopPrank();
+
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(tempUser);
+        votingContract.vote(proposalId, 0);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        (,,, ASRVotingContract.ProposalState state,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(state), uint256(ASRVotingContract.ProposalState.DEFEATED));
+    }
+
+    function testBinaryProposalFailsWithoutApproval() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 1);
+
+        skip(8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        (,,, ASRVotingContract.ProposalState state,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(state), uint256(ASRVotingContract.ProposalState.DEFEATED));
+    }
+
+    function testMultiChoiceProposalResolution() public {
+        _setupQuarterAndFunding();
+        _setupStakingUsers();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        string[] memory choices = new string[](3);
+        choices[0] = "Option A";
+        choices[1] = "Option B";
+        choices[2] = "Option C";
+
+        vm.prank(proposer1);
+        uint256 proposalId = votingContract.createProposal(
+            "Multi Choice",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.MULTICHOICE,
+            choices,
+            "",
+            address(0),
+            0
+        );
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 2);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        (,,, ASRVotingContract.ProposalState state,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(state), uint256(ASRVotingContract.ProposalState.SUCCEEDED));
+    }
+
+    function testProposalResolutionCallsStakingContract() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        vm.warp(block.timestamp + 8 days);
+
+        assertEq(stakingContract.activeProposalCount(), 1);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        assertEq(stakingContract.activeProposalCount(), 0);
+        assertFalse(stakingContract.hasActiveProposals());
+    }
+
+    function testActiveProposalCountDecrements() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        _setupStakingUsers();
+
+        vm.startPrank(proposer1);
+        uint256 proposal1 = votingContract.createProposal(
+            "Proposal 1",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+        votingContract.createProposal(
+            "Proposal 2",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+        vm.stopPrank();
+
+        assertEq(votingContract.activeProposalCount(), 2);
+
+        vm.prank(user1);
+        votingContract.vote(proposal1, 1);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposal1);
+
+        assertEq(votingContract.activeProposalCount(), 1);
+    }
+
+    function testProposalStateUpdatesCorrectly() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        (,,, ASRVotingContract.ProposalState initialState,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(initialState), uint256(ASRVotingContract.ProposalState.ACTIVE));
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        (,,, ASRVotingContract.ProposalState finalState,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(finalState), uint256(ASRVotingContract.ProposalState.SUCCEEDED));
+    }
+
+    // -- 7. ASR DISTRIBUTION TESTS --
 }

@@ -303,7 +303,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         proposal.executionTime = executionDelay;
         proposal.gracePeriodEnd = executionDelay + GRACE_PERIOD;
         proposal.state = ProposalState.ACTIVE;
-        proposal.quorumRequired = reqs.quorumPercentage;
+        proposal.quorumRequired = reqs.quorumPercentage * 100;
         proposal.approvalRequired = reqs.approvalThreshold;
         proposal.totalVotes = 0;
         proposal.exectionData = executionData;

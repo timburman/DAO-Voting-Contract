@@ -1144,4 +1144,162 @@ contract ASRVotingContractTest is Test {
     }
 
     // -- 7. ASR DISTRIBUTION TESTS --
+
+    function testAsrVotingPowerTracking() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        assertEq(votingContract.userQuarterVotingPower(user1, 1), 1000 ether);
+        assertEq(votingContract.quarterTotalVotingPower(1), 1000 ether);
+    }
+
+    function testCumulativeVoteingPowerPerQuarter() public {
+        _setupStakingUsers();
+        uint256 proposal1 = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposal1, 0);
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        uint256 proposal2 = votingContract.createProposal(
+            "Proposal 2",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        vm.prank(user1);
+        votingContract.vote(proposal2, 0);
+
+        assertEq(votingContract.userQuarterVotingPower(user1, 1), 2000 ether);
+        assertEq(votingContract.quarterTotalVotingPower(1), 2000 ether);
+    }
+
+    function testAsrRewardCalculation() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 0);
+
+        uint256 expectedReward = votingContract.calculateAsrReward(user1, 1);
+
+        uint256 calc = 1000 ether * 100_000 ether; // userVotingPower * asrRewardPool
+        uint256 expectedCalculation = (calc / 2500 ether); // (userVotingPower * asrRewardPool) / totalVotingPower
+
+        assertEq(expectedReward, expectedCalculation);
+    }
+
+    function testAsrRewardCalculationWithMultipleProposals() public {
+        _setupStakingUsers();
+        uint256 proposal1 = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposal1, 0);
+
+        vm.prank(user2);
+        votingContract.vote(proposal1, 0);
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        uint256 proposal2 = votingContract.createProposal(
+            "Proposal 2",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        vm.prank(user1);
+        votingContract.vote(proposal2, 0);
+
+        vm.prank(user2);
+        votingContract.vote(proposal2, 0);
+
+        uint256 reward = votingContract.calculateAsrReward(user1, 1);
+        uint256 calc = 2000 ether * 100_000 ether; // userVotingPower * asrRewardPool
+        uint256 expectedCalculation = (calc / 5000 ether); // (userVotingPower * asrRewardPool) / totalVotingPower
+
+        assertEq(reward, expectedCalculation);
+    }
+
+    function testAsrRewardProportionalDistribution() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 1);
+
+        uint256 reward1 = votingContract.calculateAsrReward(user1, 1);
+        uint256 reward2 = votingContract.calculateAsrReward(user2, 1);
+
+        assertEq(reward2, 60000 ether); // Lazy to eval
+
+        assertEq(reward1 + reward2, 100_000 ether);
+    }
+
+    function testQuarterlyAsrPoolManagement() public {
+        _setupQuarterAndFunding();
+
+        assertEq(votingContract.quarterASRPool(1), 100_000 * 1e18);
+        assertTrue(votingContract.quarterAsrFunded(1));
+
+        assertEq(stakingToken.balanceOf(address(votingContract)), 100_000 * 1e18);
+    }
+
+    function testAsrTrackingAcrossProposals() public {
+        _setupStakingUsers();
+        uint256 proposal1 = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposal1, 1);
+
+        uint256 quarter1Power = votingContract.userQuarterVotingPower(user1, 1);
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        uint256 proposal2 = votingContract.createProposal(
+            "Proposal 2",
+            "Desc",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        vm.prank(user1);
+        votingContract.vote(proposal2, 0);
+
+        uint256 quarter1PowerAfter = votingContract.userQuarterVotingPower(user1, 1);
+
+        assertGt(quarter1PowerAfter, quarter1Power);
+        assertEq(quarter1PowerAfter, quarter1Power + 1000 ether);
+    }
+
+    // -- 8. ASR CLAIMING TESTS --
 }

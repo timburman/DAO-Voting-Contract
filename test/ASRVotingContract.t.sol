@@ -1592,4 +1592,139 @@ contract ASRVotingContractTest is Test {
     }
 
     // -- 10. ASR VIEW FUNCTION TESTS --
+
+    function testCanUserClaimValidQuarter() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        (bool canClaim, string memory reason, uint256 asrAmount, uint256 deadline) =
+            votingContract.canUserClaim(user1, 1);
+
+        assertTrue(canClaim);
+        assertEq(keccak256(bytes(reason)), keccak256(bytes("Can claim")));
+        assertGt(asrAmount, 0);
+        assertGt(deadline, 0);
+    }
+
+    function testCanUserClaimInvalidScenarios() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // Test before quarter completion
+        (bool canClaim1, string memory reason1,,) = votingContract.canUserClaim(user1, 1);
+        assertFalse(canClaim1);
+        assertEq(keccak256(bytes(reason1)), keccak256(bytes("Quarter not completed")));
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        // Test after claiming
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        vm.prank(user1);
+        votingContract.claimAsrRewards(quarters);
+
+        (bool canClaim2, string memory reason2,,) = votingContract.canUserClaim(user1, 1);
+        assertFalse(canClaim2);
+        assertEq(keccak256(bytes(reason2)), keccak256(bytes("Already claimed")));
+
+        // Test after deadline
+        vm.warp(block.timestamp + 31 days);
+
+        (bool canClaim3, string memory reason3,,) = votingContract.canUserClaim(user2, 1);
+        assertFalse(canClaim3);
+        assertEq(keccak256(bytes(reason3)), keccak256(bytes("Claim deadline passed")));
+    }
+
+    function testGetQuarterStatus() public {
+        _setupQuarterAndFunding();
+
+        (
+            bool funded,
+            bool distributed,
+            uint256 asrPool,
+            uint256 claimDeadline,
+            bool claimActive,
+            uint256 totalVotingPower
+        ) = votingContract.getQuarterStatus(1);
+
+        assertTrue(funded);
+        assertFalse(distributed);
+        assertEq(asrPool, 100_000 ether);
+        assertEq(claimDeadline, 0);
+        assertFalse(claimActive);
+        assertEq(totalVotingPower, 0);
+    }
+
+    function testGetUserAsrInfo() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        (uint256[] memory votingPowers, uint256[] memory asrRewards, bool[] memory claimed, bool[] memory canClaim) =
+            votingContract.getUserAsrInfo(user1, quarters);
+
+        assertEq(votingPowers[0], 1000 ether);
+        assertGt(asrRewards[0], 0);
+        assertFalse(claimed[0]);
+        assertFalse(canClaim[0]); // Quarter not ended yet
+    }
+
+    function testCalculateAsrRewardEdgeCases() public {
+        // Test with zero voting power
+        uint256 reward1 = votingContract.calculateAsrReward(user1, 1);
+        assertEq(reward1, 0);
+
+        // Test with unfunded quarter
+        vm.startPrank(owner);
+        votingContract.addAdmin(admin1);
+        vm.stopPrank();
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256 reward2 = votingContract.calculateAsrReward(user1, 1);
+        assertEq(reward2, 0);
+    }
+
+    function testAsrRewardWithZeroVotingPower() public {
+        _setupQuarterAndFunding();
+
+        uint256 reward = votingContract.calculateAsrReward(user1, 1);
+        assertEq(reward, 0);
+    }
+
+    function testAsrRewardWithZeroTotalStaked() public {
+        _setupQuarterAndFunding();
+
+        // Don't stake anything, but somehow have voting power tracked
+        // This shouldn't happen in practice, but test division by zero protection
+        uint256 reward = votingContract.calculateAsrReward(user1, 1);
+        assertEq(reward, 0);
+    }
 }

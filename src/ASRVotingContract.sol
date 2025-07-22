@@ -572,7 +572,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         emit QuarterAsrSet(quarter, asrAmount);
     }
 
-    function recoverUncalimedAsr(uint256 quarter) external onlyOwner {
+    function recoverUnclaimedAsr(uint256 quarter) external onlyOwner {
         require(quarter < getCurrentQuarter(), "Quarter not completed");
         require(quarterDistributed[quarter], "Quarter not distributed");
         require(block.timestamp > quarterClaimDeadline[quarter], "Claim period not ended");

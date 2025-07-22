@@ -1302,4 +1302,160 @@ contract ASRVotingContractTest is Test {
     }
 
     // -- 8. ASR CLAIMING TESTS --
+    function testClaimAsrRewardsForCompletedQuarter() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter(); // Finalizes quarter 1
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        uint256 initialStakedBalance = stakingContract.getStakedAmount(user1);
+
+        vm.prank(user1);
+        votingContract.claimAsrRewards(quarters);
+
+        uint256 finalStakedBalance = stakingContract.getStakedAmount(user1);
+
+        // ASR should be added to staked balance
+        assertGt(finalStakedBalance, initialStakedBalance);
+        assertTrue(votingContract.userQuarterClaimed(user1, 1));
+    }
+
+    function testCannotClaimBeforeQuarterEnds() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        vm.prank(user1);
+        vm.expectRevert("Quarter not completed");
+        votingContract.claimAsrRewards(quarters);
+    }
+
+    function testCannotClaimTwice() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        vm.prank(user1);
+        votingContract.claimAsrRewards(quarters);
+
+        vm.prank(user1);
+        vm.expectRevert("Already claimed");
+        votingContract.claimAsrRewards(quarters);
+    }
+
+    function testCannotClaimAfterDeadline() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        // Fast forward past claim deadline (30 days)
+        vm.warp(block.timestamp + 31 days);
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        vm.prank(user1);
+        vm.expectRevert("Claim deadline passed");
+        votingContract.claimAsrRewards(quarters);
+    }
+
+    function testPartialAsrClaiming() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Only user1 votes (user2 doesn't vote)
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        // user1 can claim
+        vm.prank(user1);
+        votingContract.claimAsrRewards(quarters);
+
+        // user2 cannot claim (no voting power)
+        uint256 user2Reward = votingContract.calculateAsrReward(user2, 1);
+        assertEq(user2Reward, 0);
+    }
+
+    function testZeroAsrRewardsClaim() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // user1 votes, user2 doesn't
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        uint256 initialBalance = stakingContract.getStakedAmount(user2);
+
+        // user2 claims (should be no-op due to zero rewards)
+        vm.prank(user2);
+        votingContract.claimAsrRewards(quarters);
+
+        uint256 finalBalance = stakingContract.getStakedAmount(user2);
+
+        assertEq(finalBalance, initialBalance); // No change
+    }
+
+    // -- 9. ASR DEADLINE & RECOVERY TESTS --
 }

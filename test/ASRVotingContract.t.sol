@@ -1458,4 +1458,138 @@ contract ASRVotingContractTest is Test {
     }
 
     // -- 9. ASR DEADLINE & RECOVERY TESTS --
+
+    function testClaimDeadlineEnforcement() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256 deadline = votingContract.quarterClaimDeadline(1);
+        assertEq(deadline, block.timestamp + 30 days);
+    }
+
+    function testRecoverUnclaimedAsr() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        // Fast forward past deadline
+        vm.warp(block.timestamp + 31 days);
+
+        uint256 ownerBalanceBefore = stakingToken.balanceOf(owner);
+        uint256 expectedUnclaimed = 100_000 * 1e18; // Full pool since no one claimed
+
+        vm.prank(owner);
+        votingContract.recoverUnclaimedAsr(1);
+
+        uint256 ownerBalanceAfter = stakingToken.balanceOf(owner);
+
+        assertEq(ownerBalanceAfter, ownerBalanceBefore + expectedUnclaimed);
+    }
+
+    function testCannotRecoverBeforeDeadline() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        // Try to recover before deadline
+        vm.prank(owner);
+        vm.expectRevert("Claim period not ended");
+        votingContract.recoverUnclaimedAsr(1);
+    }
+
+    function testRecoverUnclaimedAsrCalculation() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Both users vote
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        // Only user1 claims
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        uint256 user1Reward = votingContract.calculateAsrReward(user1, 1);
+
+        vm.prank(user1);
+        votingContract.claimAsrRewards(quarters);
+
+        // Fast forward past deadline
+        vm.warp(block.timestamp + 31 days);
+
+        uint256 ownerBalanceBefore = stakingToken.balanceOf(owner);
+        uint256 expectedUnclaimed = 100_000 * 1e18 - user1Reward;
+
+        vm.prank(owner);
+        votingContract.recoverUnclaimedAsr(1);
+
+        uint256 ownerBalanceAfter = stakingToken.balanceOf(owner);
+
+        assertEq(ownerBalanceAfter, ownerBalanceBefore + expectedUnclaimed);
+    }
+
+    function testOnlyOwnerCanRecoverAsr() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter and wait past deadline
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        vm.warp(block.timestamp + 31 days);
+
+        vm.prank(user1);
+        vm.expectRevert("ASRVotingContract: Caller is not the owner");
+        votingContract.recoverUnclaimedAsr(1);
+    }
+
+    // -- 10. ASR VIEW FUNCTION TESTS --
 }

@@ -1727,4 +1727,105 @@ contract ASRVotingContractTest is Test {
         uint256 reward = votingContract.calculateAsrReward(user1, 1);
         assertEq(reward, 0);
     }
+
+    // -- 11. PROPOSAL EXECUTION TESTS --
+
+    function testExecutePassedProposal() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Vote and pass proposal
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 0);
+
+        // Resolve proposal
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        // Wait for execution delay
+        skip(8 days);
+
+        vm.prank(admin1);
+        votingContract.executeProposal(proposalId);
+
+        (,,, ASRVotingContract.ProposalState state,,,,) = votingContract.getProposalDetails(proposalId);
+        assertEq(uint256(state), uint256(ASRVotingContract.ProposalState.EXECUTED));
+    }
+
+    function testCannotExecuteFailedProposal() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Vote against proposal
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 1);
+
+        // Resolve proposal (should fail)
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        vm.warp(block.timestamp + 3 days);
+
+        vm.prank(admin1);
+        vm.expectRevert("Proposal not passed");
+        votingContract.executeProposal(proposalId);
+    }
+
+    function testCannotExecuteBeforeDelay() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Vote and pass proposal
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 0);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        // Try to execute immediately
+        vm.prank(admin1);
+        vm.expectRevert("Execution delay not met");
+        votingContract.executeProposal(proposalId);
+    }
+
+    function testCannotExecuteAfterGracePeriod() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Vote and pass proposal
+        vm.prank(user1);
+        votingContract.vote(proposalId, 0);
+
+        vm.prank(user2);
+        votingContract.vote(proposalId, 0);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        // Wait past grace period (execution delay + grace period)
+        vm.warp(block.timestamp + 22 days);
+
+        vm.prank(admin1);
+        vm.expectRevert("Grace period expired");
+        votingContract.executeProposal(proposalId);
+    }
+
+    // -- 12. SECURITY & EDGE CASE TESTS --
 }

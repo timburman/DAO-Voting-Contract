@@ -1828,4 +1828,151 @@ contract ASRVotingContractTest is Test {
     }
 
     // -- 12. SECURITY & EDGE CASE TESTS --
+    function testCrossContractStateConsistency() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Vote and resolve proposal
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(admin1);
+        votingContract.resolveProposal(proposalId);
+
+        // Both contracts should have consistent state
+        assertEq(stakingContract.activeProposalCount(), 0);
+        assertEq(votingContract.activeProposalCount(), 0);
+        assertFalse(stakingContract.hasActiveProposals());
+    }
+
+    // -- 14. Gas Optimization Tests --
+
+    function testVotingGasUsage() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        uint256 gasBefore = gasleft();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        emit log_named_uint("Gas used for voting", gasUsed);
+    }
+
+    function testProposalCreationGasUsage() public {
+        _setupQuarterAndFunding();
+
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        uint256 gasBefore = gasleft();
+
+        vm.prank(proposer1);
+        votingContract.createProposal(
+            "Test Proposal",
+            "Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        // Should be reasonable gas usage
+        emit log_named_uint("Gas used for Proposal Creation", gasUsed);
+    }
+
+    function testAsrClaimingGasUsage() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        // End quarter
+        vm.warp(block.timestamp + QUARTER_DURATION + 1);
+
+        votingContract.resolveProposal(proposalId);
+
+        vm.prank(admin1);
+        votingContract.startNewQuarter();
+
+        uint256[] memory quarters = new uint256[](1);
+        quarters[0] = 1;
+
+        uint256 gasBefore = gasleft();
+
+        vm.prank(user1);
+        votingContract.claimAsrRewards(quarters);
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        // Should be reasonable gas usage
+        emit log_named_uint("Gas used for claiming Asr", gasUsed);
+    }
+
+    function testSelectiveSnapshotGasSavings() public {
+        _setupStakingUsers();
+        uint256 proposalId = _createTestProposal();
+
+        // Test that selective snapshots save gas vs traditional snapshots
+        uint256 gasBefore = gasleft();
+
+        vm.prank(user1);
+        votingContract.vote(proposalId, 1);
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        // Should demonstrate gas savings (this is more of a benchmark)
+        emit log_named_uint("Gas used for Selective Snapshot", gasUsed);
+    }
+
+    function testGasForStaking() public {
+        _setupQuarterAndFunding();
+
+        uint256 gasBefore1 = gasleft();
+
+        vm.prank(user1);
+        stakingContract.stake(500 ether);
+
+        uint256 gasUsed1 = gasBefore1 - gasleft();
+
+        emit log_named_uint("Gas used before active proposal", gasUsed1);
+
+    }
+
+    function testGasAfterActivePropsal() public {
+        _setupQuarterAndFunding();
+        
+        vm.prank(owner);
+        votingContract.addAuthorizedProposer(proposer1);
+
+        vm.prank(proposer1);
+        votingContract.createProposal(
+            "Test Proposal",
+            "Test Description",
+            ASRVotingContract.ProposalCategory.PARAMETER_CHANGE,
+            ASRVotingContract.ProposalType.BINARY,
+            new string[](0),
+            "",
+            address(0),
+            0
+        );
+
+        uint256 gasBefore2 = gasleft();
+
+        vm.prank(user1);
+        stakingContract.stake(500 ether);
+
+        uint256 gasUsed2 = gasBefore2 - gasleft();
+
+        emit log_named_uint("Gas used after active proposal", gasUsed2);
+    }
 }

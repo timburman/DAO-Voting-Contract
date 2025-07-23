@@ -1945,12 +1945,11 @@ contract ASRVotingContractTest is Test {
         uint256 gasUsed1 = gasBefore1 - gasleft();
 
         emit log_named_uint("Gas used before active proposal", gasUsed1);
-
     }
 
     function testGasAfterActivePropsal() public {
         _setupQuarterAndFunding();
-        
+
         vm.prank(owner);
         votingContract.addAuthorizedProposer(proposer1);
 

@@ -289,7 +289,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
         ProposalRequirements memory reqs = categoryRequirements[category];
 
         uint256 votingEnd = block.timestamp + VOTING_PERIOD;
-        uint256 executionDelay = block.timestamp + reqs.executionDelay;
+        uint256 executionDelay = votingEnd + reqs.executionDelay;
 
         Proposal storage proposal = proposals[proposalId];
         proposal.id = proposalId;
@@ -463,7 +463,7 @@ contract ASRVotingContract is Initializable, ReentrancyGuardUpgradeable, IERC165
     function executeProposal(uint256 proposalId) external proposalExists(proposalId) onlyAuthorizedAdmin {
         Proposal storage proposal = proposals[proposalId];
         require(proposal.state == ProposalState.SUCCEEDED, "Proposal not passed");
-        require(block.timestamp >= proposal.executionTime, "Execution deplay not met");
+        require(block.timestamp >= proposal.executionTime, "Execution delay not met");
         require(block.timestamp <= proposal.gracePeriodEnd, "Grace period expired");
 
         proposal.state = ProposalState.EXECUTED;

@@ -89,5 +89,51 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
         _minimumUnstakeAmount = minUnstake;
     }
 
-    // -- Staking Functions --
+    // -- Public Interaction Staking Mechanism Functions --
+
+    function stake(uint256 amount) public virtual nonReentrant {
+        _stake(msg.sender, amount);
+    }
+
+    function unstake(uint256 amount) public virtual nonReentrant {
+        _unstake(msg.sender, amount);
+    }
+
+    function claimUnstake(uint256 requestIndex) public virtual nonReentrant {
+        _claimUnstake(msg.sender, requestIndex);
+    }
+
+    function claimAllReady() public virtual nonReentrant {
+        UnstakeRequest[] storage requests = _unstakeRequests[msg.sender];
+        require(requests.length > 0, "No unstake reqeusts");
+
+        uint256 totalAmount = 0;
+        uint256 claimedCount = 0;
+
+        for (int256 i = int256(requests.length) - 1; i >= 0; i++) {
+            UnstakeRequest storage req = requests[uint256(i)];
+            bool canClaim = _emergencyMode || (block.timestamp >= req.requestTime + _cooldownPeriod);
+
+            if (canClaim) {
+                totalAmount += req.amount;
+                claimedCount++;
+                _removeRequestByIndex(msg.sender, uint256(i));
+            }
+        }
+
+        require(totalAmount > 0, "No Claimable requests");
+        require(stakingToken.transfer(msg.sender, totalAmount), "Transfer Failed");
+
+        emit BatchUnstakeClaimed(msg.sender, totalAmount, claimedCount);
+    }
+
+    // -- Internal Core Logic --
+    function _stake(address user, uint256 amount) internal virtual {}
+
+    function _unstake(address user, uint256 amount) internal virtual {}
+
+    function _claimUnstake(address user, uint256 requestIndex) internal virtual {}
+
+    /// @notice Hook for child contracts
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual {}
 }

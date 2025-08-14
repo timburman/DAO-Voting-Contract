@@ -163,7 +163,20 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
         emit UnstakeRequested(user, amount, block.timestamp, requestIndex, claimableAt);
     }
 
-    function _claimUnstake(address user, uint256 requestIndex) internal virtual {}
+    function _claimUnstake(address user, uint256 requestIndex) internal virtual {
+        require(requestIndex < _unstakeRequests[user].length, "Invalid request");
+        UnstakeRequest storage req = _unstakeRequests[user][requestIndex];
+
+        if (!_emergencyMode) {
+            require(block.timestamp >= req.requestTime + _cooldownPeriod, "Cooldown not passed");
+        }
+
+        uint256 amount = req.amount;
+        _removeRequestByIndex(user, requestIndex);
+        require(stakingToken.transfer(user, amount), "Transfer failed");
+
+        emit UnstakeClaimed(user, amount, requestIndex);
+    }
 
     /// @notice Hook for child contracts
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual {}
@@ -185,6 +198,49 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
                 }
             }
         }
+    }
+
+    /**
+     * @dev Called by the VotingContract to signal the start of a new proposal.
+     */
+    function createNewProposal(uint256 proposalId) external onlyVotingContract nonReentrant {
+        require(proposalId > 0, "Invalid Proposal ID");
+        require(!_proposalDetails[proposalId].active, "Proposal already active");
+        require(_activeProposalCount < MAX_ACTIVE_PROPOSAL, "Too many active proposals");
+
+        _totalProposalCount++;
+        _isProposalActive = true;
+        _activeProposalCount++;
+
+        _proposalDetails[proposalId] = ProposalDetails({active: true, reserved: 0});
+
+        _activeProposalIndex[proposalId] = _activeProposalIds.length;
+        _activeProposalIds.push(proposalId);
+
+        emit ProposalCreated(proposalId);
+    }
+
+    function endProposal(uint256 proposalId) external onlyVotingContract nonReentrant {
+        require(_proposalDetails[proposalId].active, "Proposal not active");
+        require(_activeProposalCount > 0, "No active Proposals");
+
+        _proposalDetails[proposalId].active = false;
+        _activeProposalCount--;
+
+        uint256 indexToRemove = _activeProposalIndex[proposalId];
+        uint256 lastProposalId = _activeProposalIds[_activeProposalIds.length - 1];
+
+        _activeProposalIds[indexToRemove] = lastProposalId;
+        _activeProposalIndex[lastProposalId] = indexToRemove;
+
+        _activeProposalIds.pop();
+        delete _activeProposalIndex[proposalId];
+
+        if (_activeProposalCount == 0) {
+            _isProposalActive = false;
+        }
+
+        emit ProposalEnded(proposalId);
     }
 
     // -- Internal Helper

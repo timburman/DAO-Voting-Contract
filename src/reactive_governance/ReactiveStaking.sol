@@ -136,4 +136,8 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
 
     /// @notice Hook for child contracts
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual {}
+
+    // -- Internal Helper
+
+    function _removeRequestByIndex(address user, uint256 index) internal {}
 }

@@ -105,7 +105,7 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
 
     function claimAllReady() public virtual nonReentrant {
         UnstakeRequest[] storage requests = _unstakeRequests[msg.sender];
-        require(requests.length > 0, "No unstake reqeusts");
+        require(requests.length > 0, "No unstake requests");
 
         uint256 totalAmount = 0;
         uint256 claimedCount = 0;
@@ -243,7 +243,42 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
         emit ProposalEnded(proposalId);
     }
 
+    // -- View Functions --
+    function getVotingPowerForProposal(address user, uint256 proposalId) public view virtual returns (uint256) {
+        require(proposalId > 0 && proposalId <= _totalProposalCount, "Invalid proposal ID");
+        if (_userSnapshotTaken[user][proposalId]) {
+            return _preProposalBalance[user][proposalId];
+        }
+        return _balances[user];
+    }
+
+    function getStakedAmount(address user) public view virtual returns (uint256) {
+        return _balances[user];
+    }
+
+    function totalStaked() public view returns (uint256) {
+        return _totalStaked;
+    }
+
+    function getActiveProposalIds() public view virtual returns (uint256[] memory) {
+        return _activeProposalIds;
+    }
+
+    /**
+     * @dev Need to be called by admin.
+     * @notice Restriction to be added during child contract creation
+     */
+    function setVotingContract(address votingContractAddress) external virtual {
+        _votingContract = votingContractAddress;
+        emit VotingContractUpdated(votingContractAddress);
+    }
+
     // -- Internal Helper
 
-    function _removeRequestByIndex(address user, uint256 index) internal {}
+    function _removeRequestByIndex(address user, uint256 index) internal {
+        UnstakeRequest[] storage requests = _unstakeRequests[user];
+        require(index < requests.length, "Invalid Index");
+        requests[index] = requests[requests.length - 1];
+        requests.pop();
+    }
 }

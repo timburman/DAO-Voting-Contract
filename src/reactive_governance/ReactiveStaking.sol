@@ -128,14 +128,64 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
     }
 
     // -- Internal Core Logic --
-    function _stake(address user, uint256 amount) internal virtual {}
+    function _stake(address user, uint256 amount) internal virtual {
+        require(amount >= _minimumStakeAmount, "Amount below minimum");
+        require(stakingToken.balanceOf(user) >= amount, "Insufficient token balance");
+        require(stakingToken.allowance(user, address(this)) >= amount, "Insufficient allowance");
 
-    function _unstake(address user, uint256 amount) internal virtual {}
+        _beforeTokenTransfer(user, address(this), amount);
+        _snapshotIfRequired(user);
+
+        require(stakingToken.transferFrom(user, address(this), amount), "Transfer failed");
+
+        _balances[user] += amount;
+        _totalStaked += amount;
+
+        emit Staked(user, amount, _totalStaked, _balances[user]);
+    }
+
+    function _unstake(address user, uint256 amount) internal virtual {
+        require(amount >= _minimumUnstakeAmount, "Amount below minimum");
+        require(_balances[user] >= amount, "Insufficient staked");
+        require(_unstakeRequests[user].length < MAX_UNSTAKE_REQUESTS, "Max unstake requests reached");
+
+        _beforeTokenTransfer(user, address(0), amount);
+        _snapshotIfRequired(user);
+
+        _balances[user] -= amount;
+        _totalStaked -= amount;
+
+        _unstakeRequests[user].push(UnstakeRequest({amount: amount, requestTime: block.timestamp}));
+
+        uint256 requestIndex = _unstakeRequests[user].length - 1;
+        uint256 claimableAt = block.timestamp + _cooldownPeriod;
+
+        emit UnstakeRequested(user, amount, block.timestamp, requestIndex, claimableAt);
+    }
 
     function _claimUnstake(address user, uint256 requestIndex) internal virtual {}
 
     /// @notice Hook for child contracts
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual {}
+
+    // -- Snaphot and Proposal Management --
+
+    /**
+     * @dev Internal function to perform the reactive snapshot
+     */
+    function _snapshotIfRequired(address user) internal {
+        if (_isProposalActive) {
+            for (uint256 i = 0; i < _activeProposalIds.length; i++) {
+                uint256 proposalId = _activeProposalIds[i];
+                if (!_userSnapshotTaken[user][proposalId]) {
+                    uint256 currentBalance = _balances[user];
+                    _preProposalBalance[user][proposalId] = currentBalance;
+                    _userSnapshotTaken[user][proposalId] = true;
+                    emit UserSnapshottedForProposal(user, currentBalance, proposalId);
+                }
+            }
+        }
+    }
 
     // -- Internal Helper
 

@@ -266,7 +266,7 @@ abstract contract ReactiveStaking is ReentrancyGuardUpgradeable {
 
     /**
      * @dev Need to be called by admin.
-     * @notice Restriction to be added during child contract creation
+     * @notice Restriction needs to be added during child contract creation
      */
     function setVotingContract(address votingContractAddress) external virtual {
         _votingContract = votingContractAddress;

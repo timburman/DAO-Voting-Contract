@@ -76,7 +76,8 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         bytes executionData;
         address target;
         uint256 value;
-        uint totalStakedSnapshot;
+        uint256 totalStakedSnapshot;
+        uint256 winningChoiceIndex;
         mapping(address => bool) hasVoted;
         mapping(address => uint256) userVote;
     }
@@ -96,7 +97,7 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
     event VoteCast(address indexed voter, uint256 indexed proposalId, uint256 choiceIndex, uint256 votingPower);
     event ProposalCancelled(uint256 indexed proposalId);
     event ProposalExecuted(uint256 indexed proposalId);
-    event ProposalResolved(uint256 proposalId, ProposalState state);
+    event ProposalResolved(uint256 proposalId, ProposalState state, uint256 winningChoiceIndex);
 
     /**
      * @dev Initializes the contract. To be called from the child contract's initializer
@@ -208,6 +209,7 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         p.executionData = executionData;
         p.target = target;
         p.value = value;
+        p.totalStakedSnapshot = _stakingContract.totalStaked();
 
         if (proposalType == ProposalType.BINARY) {
             p.choices = ["For", "Against", "Abstrain"];
@@ -231,7 +233,7 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         require(!p.hasVoted[voter], "Already voted");
         require(choiceIndex < p.choices.length, "Invalid choice");
 
-        uint votingPower = _stakingContract.getVotingPowerForProposal(voter, proposalId);
+        uint256 votingPower = _stakingContract.getVotingPowerForProposal(voter, proposalId);
         require(votingPower > 0, "No voting power");
 
         p.hasVoted[voter] = true;
@@ -248,7 +250,48 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         _stakingContract.endProposal(proposalId);
         _activeProposalCount--;
 
-        uint totalStaked = _stakingContract.totalStaked();
+        uint256 quorumValue = (p.totalStakedSnapshot * p.quorumRequired) / 10000;
+
+        if (p.totalVotes < quorumValue) {
+            p.state = ProposalState.DEFEATED;
+            p.winningChoiceIndex = p.proposalType == ProposalType.BINARY ? 1 : 0;
+            emit ProposalResolved(proposalId, ProposalState.DEFEATED, p.winningChoiceIndex);
+            return;
+        }
+
+        uint256 winningChoice = 0;
+        if (p.proposalType == ProposalType.BINARY) {
+            uint256 forVotes = p.voteCounts[0];
+            uint256 againstVotes = p.voteCounts[1];
+            uint256 totalCastedVotes = forVotes + againstVotes;
+
+            if (totalCastedVotes == 0) {
+                p.state = ProposalState.DEFEATED;
+                winningChoice = 1;
+            } else {
+                uint256 approvalPercentage = (forVotes * 100) / totalCastedVotes;
+                if (approvalPercentage >= p.approvalRequired) {
+                    p.state = ProposalState.SUCCEEDED;
+                    winningChoice = 0;
+                } else {
+                    p.state = ProposalState.DEFEATED;
+                    winningChoice = 1;
+                }
+            }
+        } else {
+            // Multichoice
+            p.state = ProposalState.SUCCEEDED;
+            uint256 maxVotes = 0;
+            for (uint256 i = 0; i < p.voteCounts.length; i++) {
+                if (p.voteCounts[i] > maxVotes) {
+                    maxVotes = p.voteCounts[i];
+                    winningChoice = i;
+                }
+            }
+        }
+
+        p.winningChoiceIndex = winningChoice;
+        emit ProposalResolved(proposalId, p.state, winningChoice);
     }
 
     function _execute(uint256 proposalId) internal virtual {}

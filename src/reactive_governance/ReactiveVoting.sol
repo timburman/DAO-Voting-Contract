@@ -76,6 +76,7 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         bytes executionData;
         address target;
         uint256 value;
+        uint totalStakedSnapshot;
         mapping(address => bool) hasVoted;
         mapping(address => uint256) userVote;
     }
@@ -221,9 +222,34 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         return proposalId;
     }
 
-    function _vote(address voter, uint256 proposalId, uint256 choiceIndex) internal virtual {}
+    function _vote(address voter, uint256 proposalId, uint256 choiceIndex) internal virtual {
+        Proposal storage p = _proposals[proposalId];
 
-    function _resolve(uint256 proposalId) internal virtual {}
+        require(p.id != 0, "Invalid proposal");
+        require(p.state == ProposalState.ACTIVE, "Proposal not active");
+        require(block.timestamp <= p.votingEnd, "Voting period ended");
+        require(!p.hasVoted[voter], "Already voted");
+        require(choiceIndex < p.choices.length, "Invalid choice");
+
+        uint votingPower = _stakingContract.getVotingPowerForProposal(voter, proposalId);
+        require(votingPower > 0, "No voting power");
+
+        p.hasVoted[voter] = true;
+        p.userVote[voter] = choiceIndex;
+        p.voteCounts[choiceIndex] += votingPower;
+        p.totalVotes += votingPower;
+
+        emit VoteCast(voter, proposalId, choiceIndex, votingPower);
+    }
+
+    function _resolve(uint256 proposalId) internal virtual {
+        Proposal storage p = _proposals[proposalId];
+
+        _stakingContract.endProposal(proposalId);
+        _activeProposalCount--;
+
+        uint totalStaked = _stakingContract.totalStaked();
+    }
 
     function _execute(uint256 proposalId) internal virtual {}
 

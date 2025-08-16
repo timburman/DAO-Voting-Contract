@@ -170,7 +170,56 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         bytes memory executionData,
         address target,
         uint256 value
-    ) internal virtual returns (uint256) {}
+    ) internal virtual returns (uint256) {
+        require(bytes(title).length > 0, "Title required");
+        require(bytes(description).length > 0, "Description required");
+
+        if (proposalType == ProposalType.BINARY) {
+            require(choices.length == 0, "Binary proposals don't need choices");
+        } else {
+            require(choices.length >= 2 && choices.length <= 10, "Invalid choice count");
+        }
+
+        _proposalCounter++;
+        uint256 proposalId = _proposalCounter;
+
+        _stakingContract.createNewProposal(proposalId);
+        _activeProposalCount++;
+
+        ProposalRequirements memory reqs = _categoryRequirements[category];
+        uint256 votingEnd = block.timestamp + VOTING_PERIOD;
+        uint256 executionDelay = votingEnd + reqs.executionDelay;
+
+        Proposal storage p = _proposals[proposalId];
+        p.id = proposalId;
+        p.title = title;
+        p.description = description;
+        p.proposer = msg.sender;
+        p.category = category;
+        p.proposalType = proposalType;
+        p.creationTime = block.timestamp;
+        p.votingEnd = votingEnd;
+        p.executionTime = executionDelay;
+        p.gracePeriodEnd = executionDelay + GRACE_PERIOD;
+        p.state = ProposalState.ACTIVE;
+        p.quorumRequired = reqs.quorumPercentage * 100; // Convert to basis points
+        p.approvalRequired = reqs.approvalThreshold;
+        p.executionData = executionData;
+        p.target = target;
+        p.value = value;
+
+        if (proposalType == ProposalType.BINARY) {
+            p.choices = ["For", "Against", "Abstrain"];
+            p.voteCounts = new uint256[](choices.length);
+        } else {
+            p.choices = choices;
+            p.voteCounts = new uint256[](choices.length);
+        }
+
+        emit ProposalCreated(proposalId, msg.sender, title, category, proposalType);
+
+        return proposalId;
+    }
 
     function _vote(address voter, uint256 proposalId, uint256 choiceIndex) internal virtual {}
 

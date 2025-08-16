@@ -121,4 +121,62 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         _categoryRequirements[ProposalCategory.GOVERNANCE_CHANGE] =
             ProposalRequirements({quorumPercentage: 25, approvalThreshold: 80, executionDelay: 21 days});
     }
+
+    // -- Public Functions --
+    function createProposal(
+        string memory title,
+        string memory description,
+        ProposalCategory category,
+        ProposalType proposalType,
+        string[] memory choices,
+        bytes memory exectionData,
+        address target,
+        uint256 value
+    ) public virtual nonReentrant returns (uint256) {
+        // Access control (e.g., onlyAuthorizedProposer) should be added in the implementation contract.
+        require(_activeProposalCount < MAX_ACTIVE_PROPOSALS, "Too many active proposals");
+        return _createProposal(title, description, category, proposalType, choices, exectionData, target, value);
+    }
+
+    function vote(uint256 proposalId, uint256 choiceIndex) public virtual nonReentrant {
+        _vote(msg.sender, proposalId, choiceIndex);
+    }
+
+    function resolveProposal(uint256 proposalId) public virtual {
+        Proposal storage p = _proposals[proposalId];
+        require(p.state == ProposalState.ACTIVE, "Proposal not active");
+        require(block.timestamp > p.votingEnd, "Voting still active");
+        _resolve(proposalId);
+    }
+
+    function executeProposal(uint256 proposalId) public virtual nonReentrant {
+        // Access control (e.g., onlyAdmin) should be added in the implementation contract.
+        _execute(proposalId);
+    }
+
+    function cancelProposal(uint256 proposalId) public virtual {
+        // Access control (e.g., onlyAdmin) should be added in the implementation contract.
+        _cancel(proposalId);
+    }
+
+    // -- Internal Core Functions --
+
+    function _createProposal(
+        string memory title,
+        string memory description,
+        ProposalCategory category,
+        ProposalType proposalType,
+        string[] memory choices,
+        bytes memory executionData,
+        address target,
+        uint256 value
+    ) internal virtual returns (uint256) {}
+
+    function _vote(address voter, uint256 proposalId, uint256 choiceIndex) internal virtual {}
+
+    function _resolve(uint256 proposalId) internal virtual {}
+
+    function _execute(uint256 proposalId) internal virtual {}
+
+    function _cancel(uint256 proposalId) internal virtual {}
 }

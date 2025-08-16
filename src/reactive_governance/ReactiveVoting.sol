@@ -96,4 +96,29 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
     event ProposalCancelled(uint256 indexed proposalId);
     event ProposalExecuted(uint256 indexed proposalId);
     event ProposalResolved(uint256 proposalId, ProposalState state);
+
+    /**
+     * @dev Initializes the contract. To be called from the child contract's initializer
+     * @param stakingContractAddress The address of the deployed ReactiveStaking contract
+     */
+    function _initializeReactiveVoting(address stakingContractAddress) internal {
+        require(stakingContractAddress != address(0), "Invalid Staking Contract");
+        __ReentrancyGuard_init();
+        _stakingContract = ReactiveStaking(stakingContractAddress);
+        _setDefaultRequirements();
+    }
+
+    /**
+     * @dev Sets default requirements for proposal categories. Can be overridden.
+     */
+    function _setDefaultRequirements() internal virtual {
+        _categoryRequirements[ProposalCategory.PARAMETER_CHANGE] =
+            ProposalRequirements({quorumPercentage: 10, approvalThreshold: 51, executionDelay: 7 days});
+        _categoryRequirements[ProposalCategory.TREASURY_ACTION] =
+            ProposalRequirements({quorumPercentage: 15, approvalThreshold: 60, executionDelay: 14 days});
+        _categoryRequirements[ProposalCategory.EMERGENCY_ACTION] =
+            ProposalRequirements({quorumPercentage: 20, approvalThreshold: 75, executionDelay: 1 days});
+        _categoryRequirements[ProposalCategory.GOVERNANCE_CHANGE] =
+            ProposalRequirements({quorumPercentage: 25, approvalThreshold: 80, executionDelay: 21 days});
+    }
 }

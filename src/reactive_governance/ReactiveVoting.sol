@@ -294,7 +294,32 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         emit ProposalResolved(proposalId, p.state, winningChoice);
     }
 
-    function _execute(uint256 proposalId) internal virtual {}
+    function _execute(uint256 proposalId) internal virtual {
+        Proposal storage p = _proposals[proposalId];
 
-    function _cancel(uint256 proposalId) internal virtual {}
+        require(p.state == ProposalState.SUCCEEDED, "Proposal not passses");
+        require(block.timestamp >= p.executionTime, "Execution delay not met");
+        require(block.timestamp <= p.gracePeriodEnd, "Grace period expired");
+
+        p.state = ProposalState.EXECUTED;
+
+        if (p.target != address(0)) {
+            (bool success,) = p.target.call{value: p.value}(p.executionData);
+            require(success, "Execution Failed");
+        }
+
+        emit ProposalExecuted(proposalId);
+    }
+
+    function _cancel(uint256 proposalId) internal virtual {
+        Proposal storage p = _proposals[proposalId];
+
+        require(p.state == ProposalState.ACTIVE, "Proposal not active");
+
+        p.state = ProposalState.CANCELLED;
+        _stakingContract.endProposal(proposalId);
+        _activeProposalCount--;
+
+        emit ProposalCancelled(proposalId);
+    }
 }

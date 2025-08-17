@@ -80,6 +80,7 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         uint256 winningChoiceIndex;
         mapping(address => bool) hasVoted;
         mapping(address => uint256) userVote;
+        mapping(address => uint256) userVotingPower;
     }
 
     // -- Mappings --
@@ -238,6 +239,8 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
 
         p.hasVoted[voter] = true;
         p.userVote[voter] = choiceIndex;
+
+        p.userVotingPower[voter] = votingPower;
         p.voteCounts[choiceIndex] += votingPower;
         p.totalVotes += votingPower;
 
@@ -321,5 +324,56 @@ abstract contract ReactiveVoting is Initializable, ReentrancyGuardUpgradeable {
         _activeProposalCount--;
 
         emit ProposalCancelled(proposalId);
+    }
+
+    // -- View Functions --
+
+    function getProposalDetails(uint256 proposalId)
+        public
+        view
+        virtual
+        returns (
+            uint256 id,
+            string memory title,
+            string memory description,
+            address proposer,
+            ProposalState state,
+            uint256 votingEnd,
+            uint256 totalVotes,
+            string[] memory choices,
+            uint256[] memory voteCounts,
+            uint256 winningChoiceIndex
+        )
+    {
+        Proposal storage p = _proposals[proposalId];
+        return (
+            p.id,
+            p.title,
+            p.description,
+            p.proposer,
+            p.state,
+            p.votingEnd,
+            p.totalVotes,
+            p.choices,
+            p.voteCounts,
+            p.winningChoiceIndex
+        );
+    }
+
+    function getUserVoteInfo(uint256 proposalId, address user)
+        public
+        view
+        returns (bool hasVoted, uint256 choice, uint256 votingPower)
+    {
+        Proposal storage p = _proposals[proposalId];
+        require(p.id != 0, "Invalid Proposal");
+        hasVoted = _proposals[proposalId].hasVoted[user];
+        choice = _proposals[proposalId].userVote[user];
+
+        if (hasVoted) {
+            votingPower = p.userVotingPower[user];
+        } else {
+            votingPower = _stakingContract.getVotingPowerForProposal(user, proposalId);
+        }
     }
 }
